@@ -1,6 +1,8 @@
+import sys
 from enum import Enum, auto
-from dataclass import dataclass
-from typing import Any, Iterator
+from dataclasses import dataclass
+from typing import Iterator
+
 
 TEST_FILE = 'data.json'
 
@@ -12,20 +14,19 @@ class TokenType(Enum):
     KEY = auto()           # key in key:value pair
     VALUE = auto()         # value in key: value pair
 
-
-json_structural_symbol_map = {
-    '{': TokenType.START_OBJECT,
-    '}': TokenType.END_OBJECT,
-    '[': TokenType.START_ARRAY,
-    ']': TokenType.END_ARRAY
-}
-
 json_end_symbols = (',', ':', '}', ']')
+json_skip_symbols = (' ', '\t', '\n', '\r')
 
 @dataclass
 class Token:
     type: TokenType
-    value: any = None
+    content: any = None
+
+    def __repr__(self):
+        repr = f"{self.type.name}: ({self.content})"
+        if self.content is None:
+            repr =  f"{self.type.name}"
+        return '{' + repr + '}'
 
 class CharStream:
     def __init__(self, stream):
@@ -41,29 +42,24 @@ class CharStream:
         self.buf.append(ch)
 
 
-def tokenize(stream: str) -> Iterator[Token]:
-    char_stream = CharStream(stream)
-    next_token_type = None
-
+# lexical analysis: split input into raw tokens (structural symbols, strings, raw values)
+def raw_lexer(stream):
     while True:
-        c = char_stream.get()
-
-        # skip whitespace
-        if c.isspace():
+        c = stream.get()
+        if c == "":
+            return
+        if c in json_skip_symbols:
             continue
 
-        # if c is a structural symbol, yield the corresponding token
-        if c in json_structural_symbol_map.keys():
-            yield Token(json_structural_symbol_map[c])
-            continue
+        # structural symbols
+        if c in "{}[]:,":
+            yield ("STRUCT", c)
+        elif c == '"':
+            yield ("STRING", read_string(stream))
+        else:
+            yield ("RAW", read_value(c, stream))
 
-        if c == '"':
-            yield Token("VALUE", read_string(char_stream))
-            continue
-
-        yield Token("VALUE", read_value(c, char_stream))
-
-
+# read a JSON string
 def read_string(char_stream: CharStream):
     buf = ['"']
 
@@ -83,7 +79,8 @@ def read_string(char_stream: CharStream):
             break
 
     return ''.join(buf)
-        
+
+# read a JSON raw value (number, true, false, null) 
 def read_value(first_char:str, char_stream: CharStream):
     buf = [first_char]
 
@@ -101,11 +98,97 @@ def read_value(first_char:str, char_stream: CharStream):
 
     return ''.join(buf).strip()
         
+# token generation: convert raw tokens into intermediate representation of JSON structure
+# that can be directly feed into the verifier
+def token_gen(tokens):
+    next_state = "KEY"
+    stack = [] # to track whether we are in an object or array context
+
+    for type, value in tokens:
+        # print(f"DEBUG: type={type}, value={value}, next_state={next_state}, stack={stack}")
+
+        ## structural symbols -> tokens and state transitions
+        if value == '{':
+            stack.append('{')
+            yield Token(TokenType.START_OBJECT)
+            next_state = "KEY"
+
+        elif value == '[':
+            stack.append('[')
+            yield Token(TokenType.START_ARRAY)
+            next_state = "VALUE"
+
+        elif value == '}':
+            if not stack or stack[-1] != '{':
+                raise ValueError("Mismatched }")
+            stack.pop()
+            yield Token(TokenType.END_OBJECT)
+            next_state = "KEY_OR_END"
+
+        elif value == ']':
+            if not stack or stack[-1] != '[':
+                raise ValueError("Mismatched ]")
+            stack.pop()
+            yield Token(TokenType.END_ARRAY)
+            next_state = "KEY_OR_END"
+
+        elif value == ':':
+            if next_state != "COLON":
+                raise ValueError("Unexpected :")
+
+            next_state = "VALUE"
+
+        elif value == ',':
+            if not stack and next_state != "COMMA_OR_END":
+                raise ValueError("Unexpected ,")
+            if stack[-1] == "{":
+                next_state = "KEY"
+            else:
+                next_state = "VALUE"
+
+        # string / raw value -> key or value
+        if type in ("STRING", "RAW"):
+
+            if not stack:
+                yield Token(TokenType.VALUE, value)
+                continue
+
+            # if in an object context
+            if stack[-1] == "{":
+            
+                if next_state == "KEY":
+                    if type != "STRING":
+                        raise ValueError("Expected string for key")
+                    
+                    yield Token(TokenType.KEY, value)
+                    next_state = "COLON"
+
+
+                elif next_state == "VALUE":
+                    yield Token(TokenType.VALUE, value)
+                    next_state = "COMMA_OR_END"
+
+                else:
+                    raise ValueError(f"Unexpected {type} in state {next_state}")
+                
+            elif stack[-1] == "[":
+                if next_state == "VALUE":
+                    yield Token(TokenType.VALUE, value)
+                    next_state = "COMMA_OR_END"
+                else:
+                    raise ValueError(f"Unexpected {type} in state {next_state} within array")
         
 
 def main(file_name):
-    pass
+    with open(file_name, 'r') as f:
+        char_stream = CharStream(f)
+        for token in token_gen(raw_lexer(char_stream)):
+            print(token, end=' ')
+
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        main(sys.argv[1])
+    else:
+        main(TEST_FILE)
