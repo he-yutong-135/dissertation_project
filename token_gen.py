@@ -97,6 +97,9 @@ def read_value(first_char:str, char_stream: CharStream):
         buf.append(c)
 
     return ''.join(buf).strip()
+
+def normalize_key(s):
+    return s.strip('"')
         
 # token generation: convert raw tokens into intermediate representation of JSON structure
 # that can be directly feed into the verifier
@@ -160,7 +163,7 @@ def token_gen(tokens):
                     if type != "STRING":
                         raise ValueError("Expected string for key")
                     
-                    yield Token(TokenType.KEY, value)
+                    yield Token(TokenType.KEY, normalize_key(value))
                     next_state = "COLON"
 
 
@@ -178,14 +181,15 @@ def token_gen(tokens):
                 else:
                     raise ValueError(f"Unexpected {type} in state {next_state} within array")
         
-
-def main(file_name):
+def token_stream(file_name):
     with open(file_name, 'r') as f:
         char_stream = CharStream(f)
         for token in token_gen(raw_lexer(char_stream)):
+            yield token
+
+def main(file_name):
+    for token in token_stream(file_name):
             print(token, end=' ')
-
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
