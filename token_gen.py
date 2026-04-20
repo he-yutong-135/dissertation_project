@@ -187,9 +187,14 @@ def token_stream(file_name):
         for token in token_gen(raw_lexer(char_stream)):
             yield token
 
-def main(file_name):
-    for token in token_stream(file_name):
+def print_token_stream(token_stream):
+    print("token stream: ==>")
+    for token in token_stream:
             print(token, end=' ')
+    print()
+
+def main(file_name):
+    print_token_stream(token_stream(file_name))
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

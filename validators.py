@@ -4,7 +4,6 @@ class ValidationStatus(Enum):
     VALID = auto()
     INVALID = auto()
 
-
 class ValidationError:
     def __init__(self, path, message, value=None, rule=None):
         self.path = path          
@@ -24,19 +23,13 @@ class ValidationResult:
         self.status = ValidationStatus.INVALID
         self.errors.append(error)
 
-def validate(value, schema):
+def validate(value, schema, validators):
     for rule, param in schema.constraints.items():
         func = validators.get(rule)
         if func:
             func(value, param)
         else:
             raise ValueError(f"Unknown validation rule: {rule}")
-
-validators = {
-    "minimum": validate_minimum,
-    "maximum": validate_maximum,
-    "enum": validate_enum,
-}
 
 def validate_minimum(value, min_val):
     if float(value) < min_val:
@@ -53,3 +46,12 @@ def validate_enum(value, enum_list):
     if value not in enum_list:
         return False, f"{value} not in {enum_list}"
     return True, None
+
+validators = {
+    "minimum": validate_minimum,
+    "maximum": validate_maximum,
+    "enum": validate_enum
+}
+
+if __name__ == "__main__":
+    pass

@@ -1,4 +1,5 @@
-from token_gen import token_stream, TokenType
+import sys
+from token_gen import token_stream, TokenType, Token
 from enum import Enum, auto
 
 schema_storage = []
@@ -40,8 +41,11 @@ def new_node():
     node.id = len(schema_storage) - 1
     return node.id
 
-def to_primitive(x):
-    return x.strip('"')
+def to_primitive(token):
+    if isinstance(token, Token):
+        return token.content.strip('"')
+    return token.strip('"')
+    
 
 def parse_value(token_stream):
     return parse(token_stream, expected_type=TokenType.VALUE)
@@ -80,35 +84,13 @@ def parse_object(token_stream):
             break
         if token.type != TokenType.KEY:
             raise ValueError("Expected key in schema object")
-        key = to_primitive(token.content)
+        key = to_primitive(token)
         # print(f"Parsing field: {key}")
         # store the parsed schema for this key in the current node
-        node.schemas[key] = parse_field(key, token_stream)
+        node.schemas[key] = parse(token_stream)
         # print(f"Finished parsing field: {key}, value={node.schemas[key]}")
     # return a reference to this schema node
     return SchemaRef(schema_id)
-
-def parse_flatten_object(token_stream):
-    props = {}
-    next(token_stream)
-    # parse fields in the schema object
-    for token in token_stream:
-        # read until the end of this schema object
-        if token.type == TokenType.END_OBJECT:
-            break
-        if token.type != TokenType.KEY:
-            print(token)
-            raise ValueError("Expected key in schema object")
-        key = to_primitive(token.content)
-        # print(f"Parsing field: {key}")
-        # store the parsed schema for this key in the current node
-        props[key] = parse_field(key, token_stream)
-    return props
-
-def parse_field(key, token_stream):
-    parser_func = FIELD_PARSERS.get(key, parse) # default parser is parse function
-    # print(f"Using parser {parser_func.__name__} for key {key}")
-    return parser_func(token_stream)
 
 def parse_array(token_stream):
     arr = []
@@ -118,12 +100,9 @@ def parse_array(token_stream):
         arr.append(parse(token_stream, first_token=token))
     return arr
 
-FIELD_PARSERS = {
-    'type': parse_value,
-    'properties': parse_flatten_object
-}
 
 def print_schema_storage(storage=None):
+    print("schema storage: ==>")
     if storage is None:
         print("Empty schema storage")
     else:
@@ -132,14 +111,12 @@ def print_schema_storage(storage=None):
 
 def build_schema(file_name):
     parse(token_stream(file_name))
-    # print(f"Built schema with ID {schema_id}")
-    # print_schema_storage()
     return schema_storage
 
-
-def main(file_name):
-    storage = build_schema(file_name)
-    print_schema_storage(storage)
-
 if __name__ == "__main__":
-    main(TEST_FILE)
+    storage = None
+    if len(sys.argv) > 1:
+        storage = build_schema(sys.argv[1])
+    else:
+        storage = build_schema(TEST_FILE)
+    print_schema_storage(storage)
