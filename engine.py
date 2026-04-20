@@ -172,21 +172,26 @@ class Engine():
 
             if token.is_value():
                 value = token.content
-                if pending_key is not None:
+                if pending_key is not None and self.current_node.key is not None:
                     node = self.create_new_node(NodeType.Value)
                     node.key = pending_key
                     node.add_value(value)
 
                     node.parent.add_child(node)
-                    if node.parent.key is None:
-                        print()
-                        print(f'{node.parent} -> {node}')
-                        print()
 
                     pending_key = None
 
                     self.pop()
                     print(self.current_node)
+                    self.current_node = self.current_node.parent
+                elif self.current_node.key is None:
+                    node = self.current_node
+                    node.type = NodeType.Value
+                    node.key = pending_key
+                    node.add_value(value)
+
+                    pending_key = None
+
                     self.current_node = self.current_node.parent
                 
                 else:
