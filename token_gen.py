@@ -22,6 +22,24 @@ class Token:
     type: TokenType
     content: any = None
 
+    def is_start_object(self):
+        return self.type == TokenType.START_OBJECT
+    
+    def is_start_array(self):
+        return self.type == TokenType.START_ARRAY
+    
+    def is_end_object(self):
+        return self.type == TokenType.END_OBJECT
+    
+    def is_end_array(self):
+        return self.type == TokenType.END_ARRAY
+    
+    def is_key(self):
+        return self.type == TokenType.KEY
+    
+    def is_value(self):
+        return self.type == TokenType.VALUE
+
     def __repr__(self):
         repr = f"{self.type.name}: ({self.content})"
         if self.content is None:
