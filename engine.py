@@ -16,7 +16,7 @@ def read_config():
 schema_file, data_file = read_config()
 
 schema_storage = build_schema(schema_file)
-# print_schema_storage(schema_storage)
+print_schema_storage(schema_storage)
 ts  = token_stream(data_file)
 # print_token_stream(ts)
 
@@ -68,10 +68,10 @@ class Node:
     def add_value(self, value):
         if self.type is NodeType.Value:
             self.set_value(value)
-        elif self.type is NodeType.Array:
-            self.add_element(value)
-        elif self.type is NodeType.Object:
-            self.add_child(value) 
+        # elif self.type is NodeType.Array:
+        #     self.add_element(value)
+        # elif self.type is NodeType.Object:
+        #     self.add_child(value) 
         else:
             print(f'wrong type: {self.type}')
             raise TypeError()
@@ -106,12 +106,29 @@ class Engine():
         self.token_stream = token_stream(file_name)
 
     def push(self, node):
+        self.verify_structure(node)
+
         self.current_node = node
         self.stack.append(node)
 
     def pop(self):
         node = self.stack.pop()
+        
+        if len(self.stack) > 0 and node.parent is None:
+            raise ValueError('standalone node')
+        
+        self.verify_node(node)
+
         self.current_node = node
+
+    def verify_node(self, node):
+        pass
+
+    def verify_structure(self, node):
+        if node.key is None:
+            raise ValueError(f'key is none:')
+        
+        return True
 
     # this function takes a value and a schema, and verifies if the value obeys the schema
     def validate(self, value, schema):
@@ -122,8 +139,9 @@ class Engine():
             else:
                 raise ValueError(f"Unknown validation rule: {rule}")
             
-    def create_new_node(self, type):
+    def create_new_node(self, type, key=None):
         node = Node()
+        node.key = key
         node.type = type
         node.parent = self.current_node
         self.current_node = node
@@ -132,8 +150,12 @@ class Engine():
         return node
     
     def display_stack(self):
-        for i, node in enumerate(self.stack):
-            print(f"node {i} => {node}")
+        if len(self.stack) == 0:
+            print('stack is empty')
+            return
+        else:
+            for i, node in enumerate(self.stack):
+                print(f"node {i} => {node}")
             
     def run(self):
         pending_key = None
@@ -146,15 +168,24 @@ class Engine():
                     node.parent = None
                     self.push(node)
                 else:
-                    node = self.create_new_node(NodeType.Object)
-                    node.key = pending_key
-                    node.parent.add_value(node)
+                    if self.current_node.type == NodeType.Array:
+                        key = len(self.current_node.children) if self.current_node.children else 0
+                    else:
+                        key = pending_key
+                        pending_key = None
+                    node = self.create_new_node(NodeType.Object, key)
+                    node.parent.add_child(node)
                     pending_key = None
 
             if token.is_start_array():
-                node = self.create_new_node(NodeType.Array)
-                node.key = pending_key
-                pending_key = None
+                if len(self.stack) == 0:
+                    node = Node('root')
+                    node.type = NodeType.Array
+                    node.parent = None
+                    self.push(node)
+                else:
+                    node = self.create_new_node(NodeType.Array, pending_key)
+                    pending_key = None
 
 
             if token.is_end_object():
@@ -172,31 +203,29 @@ class Engine():
 
             if token.is_value():
                 value = token.content
-                if pending_key is not None and self.current_node.key is not None:
-                    node = self.create_new_node(NodeType.Value)
-                    node.key = pending_key
+                parent = self.current_node
+
+                # if it is in an array
+                if parent.type is NodeType.Array:
+                    
+                    index = len(parent.children) if parent.children else 0
+                    node = self.create_new_node(NodeType.Value, index)
+                    # node.key = index
+                    node.parent = parent
                     node.add_value(value)
+                    parent.add_element(node)
 
-                    node.parent.add_child(node)
-
-                    pending_key = None
-
-                    self.pop()
-                    print(self.current_node)
-                    self.current_node = self.current_node.parent
-                elif self.current_node.key is None:
-                    node = self.current_node
-                    node.type = NodeType.Value
-                    node.key = pending_key
-                    node.add_value(value)
-
-                    pending_key = None
-
-                    self.current_node = self.current_node.parent
-                
                 else:
-                    self.current_node.add_value(value)
-                    self.current_node.parent.add_child(self.current_node)
+                    # it is in an object
+                    node = self.create_new_node(NodeType.Value, pending_key)
+                    node.parent = parent
+                    node.add_value(value)
+                    parent.add_child(node)
+                    pending_key = None
+
+                self.pop()
+                print(self.current_node)
+                self.current_node = self.current_node.parent
                 
 
         self.display_stack()
@@ -205,7 +234,7 @@ class Engine():
 
 
 if __name__ == '__main__':
-    engine = Engine(schema=schema_file, target=schema_file)
+    engine = Engine(schema=schema_file, target=data_file)
     engine.run()
 
 
