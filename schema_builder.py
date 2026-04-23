@@ -19,6 +19,9 @@ class SchemaNode:
         self.schemas = {} # key -> schema data
 
     def find_child_schema(self, key):
+        if key == None:
+            return 0
+        # print(f'find child schema for key({key}): {self.schemas['type']}')
         if self.schemas['type'] == "object":
             children_ref = self.schemas['properties']
         else:
