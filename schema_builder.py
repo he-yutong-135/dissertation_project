@@ -11,11 +11,27 @@ class SchemaType(Enum):
     STRUCTURE = auto()
     VALUE = auto()
     COMPILE = auto()
+
     
 class SchemaNode:
     def __init__(self):
         self.id = 0
         self.schemas = {} # key -> schema data
+
+    def find_child_schema(self, key):
+        if self.schemas['type'] == "object":
+            children_ref = self.schemas['properties']
+        else:
+            return self.schemas['items'].value()
+        if children_ref is None:
+            raise ValueError('current schema does not have child')
+        # print(f'find_child_schema: {children_ref.follow().schemas.keys()}')
+        child_ref = children_ref.follow().schemas[key]
+
+        if child_ref is None:
+            return None
+        
+        return child_ref.value()
 
     def validate(self, value):
         pass
@@ -26,12 +42,26 @@ class SchemaNode:
 class SchemaRef:
     def __init__(self, schema_id: int):
         self.schema_id = schema_id
+
+    def follow(self):
+        return schema_storage[self.schema_id]
+    
+    def value(self):
+        return self.schema_id
+    
     def __repr__(self):
         return f"ref({self.schema_id})"
 
 class LiteralValue:
     def __init__(self, value):
         self.value = value
+
+    def value(self):
+        return self.value
+    
+    def __eq__(self, value):
+        return to_primitive(self.value) == value
+    
     def __repr__(self):
         return f"value({self.value})"
 
@@ -45,6 +75,11 @@ def to_primitive(token):
     if isinstance(token, Token):
         return token.content.strip('"')
     return token.strip('"')
+
+
+PERMISSIVE_SCHMEA_NODE = SchemaNode()
+PERMISSIVE_SCHMEA_NODE.id = -1
+PERMISSIVE_SCHMEA_NODE.schemas['*'] = LiteralValue(True)
     
 
 def parse_value(token_stream):
