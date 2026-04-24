@@ -21,47 +21,19 @@ def write_error(message, log_file, flush=False):
 
 TEST_FILE = 'schema.json'
 
-def retrieve_schema(id=-1):
-    if id < 0 or id < len(schema_storage):
-        return ACCRPT_NODE if id == -1 else REJECT_NODE
-    else:
-        return schema_storage[id]
+# def retrieve_schema(id=-1):
+#     if id == -1:
+#         return ACCEPT_NODE
+#     if id == -2:
+#         return REJECT_NODE
+#     else:
+#         return schema_storage[id]
     
 class SchemaNode:
     def __init__(self):
         self.id = 0
         self.schemas = {} # key -> schema data
 
-    def accept_child(self, key):
-        return True
-
-    def find_child_schema(self, key):
-        # if is permissive schema and no key provided -> the outermost object, returns the first schema id
-        # if key is provided -> inside a node with no constraints, return 
-        if self.id == -1:
-            return 0 if key is None else -1
-        if self.id == -2:
-            return -2
-        # print(f'find child schema for key({key}): {self.schemas['type']}')
-        if self.schemas['type'] == "object":
-            children_ref = self.schemas['properties']
-        else:
-            return self.schemas['items'].value()
-        
-        if children_ref is None:
-            # raise ValueError('current schema does not have child')
-            return -2
-        # print(f'find_child_schema: {children_ref.follow().schemas.keys()}')
-        child_ref = children_ref.follow().schemas[key]
-
-        if child_ref is None:
-            # return None
-            return -2
-        
-        return child_ref.value()
-
-    def validate(self, value):
-        pass
 
     def __repr__(self):
         return f"SchemaNode(id={self.id}, schemas={self.schemas})"
@@ -81,16 +53,21 @@ class SchemaRef:
 
 class LiteralValue:
     def __init__(self, value):
-        self.value = value
-
-    def value(self):
-        return self.value
+        self._value = value
     
-    def __eq__(self, value):
-        return to_primitive(self.value) == value
+    def __eq__(self, other):
+        if isinstance(other, LiteralValue):
+            return self._value == other._value
+        return self.__str__() == other
+    
+    def __hash__(self):
+        return hash(self.__str__())
+    
+    def __str__(self):
+        return to_primitive(self._value)
     
     def __repr__(self):
-        return f"value({self.value})"
+        return f"value({self._value})"
 
 def new_node():
     node = SchemaNode()
@@ -104,10 +81,10 @@ def to_primitive(token):
     return token.strip('"')
 
 
-ACCRPT_NODE = SchemaNode()
-ACCRPT_NODE.id = -1
-ACCRPT_NODE.schemas['*'] = LiteralValue(True)
-ACCRPT_NODE_ID = ACCRPT_NODE.id
+ACCEPT_NODE = SchemaNode()
+ACCEPT_NODE.id = -1
+ACCEPT_NODE.schemas['*'] = LiteralValue(True)
+ACCEPT_NODE_ID = ACCEPT_NODE.id
 
 REJECT_NODE = SchemaNode()
 REJECT_NODE.id = -2
@@ -180,6 +157,8 @@ def print_schema_storage(storage=None):
 def build_schema(file_name):
     parse(token_stream(file_name))
     return schema_storage
+
+
 
 if __name__ == "__main__":
     storage = None

@@ -1,18 +1,27 @@
-from enum import Enum, auto
+from enum import auto, StrEnum
 
-class NodeType(Enum):
+class NodeType(StrEnum):
     Object = auto()
     Array = auto()
     Value = auto()
 
-class SchemaType(Enum):
+    def __repr__(self):
+        return self.__str__()
+
+class SchemaType(StrEnum):
     STRUCTURE = auto()
     VALUE = auto()
     COMPILE = auto()
 
-class ValidationStatus(Enum):
+class ValidationStatus(StrEnum):
     VALID = auto()
     INVALID = auto()
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __bool__(self):
+        return self is ValidationStatus.VALID
 
 type_map = {
     "string": str,

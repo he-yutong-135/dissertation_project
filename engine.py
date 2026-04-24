@@ -1,4 +1,4 @@
-from schema_builder import build_schema, print_schema_storage, ACCRPT_NODE, retrieve_schema, SchemaNode, SchemaRef, LiteralValue
+from schema_builder import build_schema, ACCEPT_NODE, to_primitive
 from token_gen import token_stream, print_token_stream, TokenType
 import configparser
 from validators import ValidationStatus, ValidationEngine
@@ -13,10 +13,12 @@ class Node:
         self.type = NodeType.Object # OBJECT / ARRAY / VALUE
         self.children = None # dict or list
 
+        self.children_states = None # this records the validation status of each child node
+
         self.schema_id = 0
 
-    def is_valid(self):
-        return self.state == ValidationStatus.VALID 
+    # def is_valid(self):
+    #     return self.state == ValidationStatus.VALID 
 
     def __repr__(self):
         value = ''
@@ -24,14 +26,12 @@ class Node:
             value = f': value({self.value})'
         elif self.children is not None:
             if self.type is NodeType.Object:
-                value = f': children({list(self.children.keys())})'
+                value = f': children({self.children_states})'
             elif self.type is NodeType.Array:
-                value = f': array({list(self.children.values())})'
+                value = f': array({self.children_states})'
 
-        schema = ''
-        if self.schema_id >= 0:
-            schema = f'schema({self.schema_id})' 
-        return f'[{self.type}| {self.key}{value}] -> {schema}'
+        schema = f'schema({self.schema_id})' 
+        return f'[{self.type}| {self.key}{value}] -> {schema} state({self.state})'
 
     def set_schema(self, id):
         self.schema_id = id
@@ -52,6 +52,12 @@ class Node:
         else:
             self.children[node.key] = node
 
+    def remove_child(self, node):
+        if self.children is None or node.key not in self.children.keys():
+            raise ValueError('fail to remove the child')
+
+        self.children.pop(node.key)
+
     def add_value(self, value):
         if self.type is NodeType.Value:
             self.set_value(value)
@@ -62,6 +68,15 @@ class Node:
         else:
             print(f'wrong type: {self.type}')
             raise TypeError()
+        
+    def register_state(self, node):
+        if self.children_states is None:
+            self.children_states = {}
+
+        if node.key not in self.children.keys():
+            raise ValueError('wrong register: not a child of its parent')
+
+        self.children_states[node.key] = node.state
 
 class Engine():
     def __init__(self, schema=None, target=None):
@@ -72,11 +87,11 @@ class Engine():
         self.validators = ValidationEngine(self.schema_storage)
 
         self.current_node = self.stack[0]
-        self.current_schema_id = ACCRPT_NODE.id# self.schema_storage[0] # starting schema for outermost json object
+        self.current_schema_id = ACCEPT_NODE.id# self.schema_storage[0] # starting schema for outermost json object
 
     def change_schema(self, file_name):
         self.schema_storage = build_schema(file_name)
-        self.current_schema_id = ACCRPT_NODE.id
+        self.current_schema_id = ACCEPT_NODE.id
 
     def change_target(self, file_name):
         self.token_stream = token_stream(file_name)
@@ -97,7 +112,7 @@ class Engine():
 
     def pop(self):
         node = self.stack.pop()
-        print(f'pop: {node}')
+        
         
         # if len(self.stack) > 0 and node.parent is None:
         if node.parent is None:
@@ -105,14 +120,25 @@ class Engine():
         
         self.verify_node(node)
 
+        # after verifying the node, register its state to the parent node
+        # then remove it from the children dict
+        node.parent.register_state(node)
+        node.parent.remove_child(node)
+
+        # move the current force to its parent, which is to be 
         self.current_node = node.parent
         self.current_schema_id = node.parent.schema_id
         # self.display_stack()
+        print(f'pop: {node}')
 
         return node
 
-    def verify_node(self, node):
-        pass
+    def verify_node(self, node: Node):
+        if node.type is NodeType.Value:
+            node.state = self.validators.validate_value(node.schema_id, node.value)
+
+        else:
+            node.state = self.validators.validate_complete(node.schema_id, node.children_states)
 
     def verify_structure(self, node):
         if node.key is None:
@@ -169,7 +195,7 @@ class Engine():
                 # self.current_node = self.current_node.parent
 
             if token.is_key():
-                pending_key = token.content
+                pending_key = to_primitive(token.content)
 
             if token.is_value():
                 value = token.content
