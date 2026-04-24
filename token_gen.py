@@ -79,7 +79,7 @@ def raw_lexer(stream):
 
 # read a JSON string
 def read_string(char_stream: CharStream):
-    buf = ['"']
+    buf = []
 
     while True:
         c = char_stream.get()
@@ -96,7 +96,7 @@ def read_string(char_stream: CharStream):
         if c == '"':
             break
 
-    return ''.join(buf)
+    return ''.join(buf[:-1])
 
 # read a JSON raw value (number, true, false, null) 
 def read_value(first_char:str, char_stream: CharStream):
@@ -114,7 +114,16 @@ def read_value(first_char:str, char_stream: CharStream):
 
         buf.append(c)
 
-    return ''.join(buf).strip()
+    raw_value = ''.join(buf).strip()
+    if raw_value == "true": return True
+    if raw_value == "false": return False
+    if raw_value == "null": return None
+
+    try:
+        if "." in raw_value: return float(raw_value)
+        return int(raw_value)
+    except:
+        raise ValueError(f"Unexpected value: {raw_value}")
 
 def normalize_key(s):
     return s.strip('"')
