@@ -22,6 +22,24 @@ class ValidationStatus(StrEnum):
 
     def __bool__(self):
         return self is ValidationStatus.VALID
+    
+class LiteralValue:
+    def __init__(self, value):
+        self._value = value
+    
+    def __eq__(self, other):
+        if isinstance(other, LiteralValue):
+            return self._value == other._value
+        return self.__str__() == other
+    
+    def __hash__(self):
+        return hash(self.__str__())
+    
+    def __str__(self):
+        return self._value.strip('"')
+    
+    def __repr__(self):
+        return f"value({self._value})"
 
 type_map = {
     "string": str,
