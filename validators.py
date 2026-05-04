@@ -1,25 +1,5 @@
 from constants import ValidationStatus, type_map, ErrorType, ValidationError
 from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef
-# from engine import Node
-
-# class ValidationError:
-#     def __init__(self, path, message, value=None, rule=None):
-#         self.path = path          
-#         self.message = message
-#         self.value = value
-#         self.rule = rule          
-
-#     def __repr__(self):
-#         return f"[{'.'.join(self.path)}] {self.message} (value={self.value})"
-    
-# class ValidationResult:
-#     def __init__(self):
-#         self.status = ValidationStatus.VALID
-#         self.errors = []
-
-#     def add_error(self, error: ValidationError):
-#         self.status = ValidationStatus.INVALID
-#         self.errors.append(error)
 
 def validate(value, schema_node, validator_storage):
     for rule, param in schema_node.constraints.items():
@@ -80,7 +60,7 @@ class ValidationEngine():
         # if key is provided -> inside a node with no constraints, return 
         # print(f'find child: {schema_id}, {key}')
         if schema_id == ACCEPT_NODE.id:
-            return 0 if key is None else ACCEPT_NODE.id
+            return 0 if key == 'top_object' else ACCEPT_NODE.id
         if schema_id == REJECT_NODE.id:
             return REJECT_NODE.id
         
@@ -122,7 +102,7 @@ class ValidationEngine():
             
             func = validator_storage.get(key)
             if not func or not func(value, param):
-                errors.append(ValidationError(ErrorType.BAD_VALUE, f'value({value}) defies schema({key}: {param})'))
+                errors.append(ValidationError(ErrorType.BAD_VALUE, f'value({value}) violates schema[{key}({param})]'))
                 
         if len(errors) > 0:
             return ValidationStatus.INVALID, errors

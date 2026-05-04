@@ -42,17 +42,18 @@ class LiteralValue:
         return hash(self._value)
     
     def __repr__(self):
-        return f"value({self._value})"
+        return f"{self._value}"
     
 class ErrorType(StrEnum):
     UNEXPECTED = auto()
     INCOMPLETE = auto()
     BAD_VALUE = auto()
+    UNCLOSED = auto()
 
 class ValidationError():
     def __init__(self, error_type: ErrorType, message=None):
         self.error_type: ErrorType = error_type
-        self.message = self.error_type
+        self.message = None
         if message:
             self.message = message
 
@@ -60,7 +61,10 @@ class ValidationError():
         return self.__repr__()
 
     def __repr__(self):
-        return f'Error({self.error_type}: {self.message})'
+        if self.message:
+            return f'{dent}Error: {self.message}'
+        else:
+            return f'{dent}Error: {self.error_type}'
 
 
 type_map = {
@@ -78,21 +82,7 @@ WILDCARD = "*"
 error_buffer = []
 BATCH_SIZE = 10
 LOG_FILE = 'validation_log.txt'
-
-def init_log(log_file=LOG_FILE):
-    with open(log_file, 'w', encoding='utf-8') as f:
-        f.write("--- Validation Log Start ---\n") 
-    error_buffer.clear()
-
-# recording all errors into a log file
-def write_error(message, log_file=LOG_FILE, flush=False):
-    if message is not None:
-        error_buffer.append(str(message))
-
-    if flush or len(error_buffer) > BATCH_SIZE: 
-        if error_buffer:
-            with open(log_file, 'a', encoding='utf-8') as f:
-                f.write('\n'.join(error_buffer) + '\n')
-            error_buffer.clear()
+MAX_DEPTH = 10
+dent = '  '
 
 schema_file, data_file = 'schema.json', 'data.json'

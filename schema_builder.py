@@ -3,21 +3,7 @@ from token_gen import token_stream, TokenType, Token
 from constants import LiteralValue
 
 schema_storage = []
-WILDCARD = "*"
 
-error_buffer = []
-BATCH_SIZE = 10
-log_file = 'validation_log.txt'
-
-# recording all errors into a log file
-def write_error(message, log_file, flush=False):
-    error_buffer.append(message)
-
-    if len(error_buffer) > BATCH_SIZE or flush:
-        if error_buffer:
-            with open(log_file, 'a', encoding='utf-8') as f:
-                f.write('\n'.join(error_buffer) + '\n')
-            error_buffer.clear()
 
 TEST_FILE = 'schema.json'
 
