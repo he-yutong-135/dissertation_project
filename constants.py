@@ -1,4 +1,5 @@
 from enum import auto, StrEnum
+from functools import total_ordering
 
 class NodeType(StrEnum):
     Object = auto()
@@ -23,12 +24,16 @@ class ValidationStatus(StrEnum):
     def __bool__(self):
         return self is ValidationStatus.VALID
     
+@total_ordering    
 class LiteralValue:
     def __init__(self, value):
         self._value = value
     
     def __eq__(self, value):
         return self._value == value
+    
+    def __lt__(self, value):
+        return self._value < value
     
     def __str__(self):
         return str(self._value)
@@ -44,11 +49,21 @@ class LiteralValue:
     def __repr__(self):
         return f"{self._value}"
     
+    def __float__(self):
+        return float(self._value)
+
+    def __int__(self):
+        return int(self._value)
+
+    
 class ErrorType(StrEnum):
-    UNEXPECTED = auto()
-    INCOMPLETE = auto()
-    BAD_VALUE = auto()
-    UNCLOSED = auto()
+    UNEXPECTED = "<UNEXPECTED>"
+    INCOMPLETE = "<INCOMPLETE>"
+    BAD_VALUE = "<BAD VALUE>"
+    UNCLOSED = "<UNCLOSED>"
+    SCHEMA_ERROR = "<SCHEMA ERROR>"
+    # for test
+    SUCCESS = "<SUCCESS>"
 
 class ValidationError():
     def __init__(self, error_type: ErrorType, message=None):
@@ -62,9 +77,9 @@ class ValidationError():
 
     def __repr__(self):
         if self.message:
-            return f'{dent}Error: {self.message}'
+            return f'{dent}{self.error_type}: {self.message}'
         else:
-            return f'{dent}Error: {self.error_type}'
+            return f'{dent}{self.error_type}'
 
 
 type_map = {

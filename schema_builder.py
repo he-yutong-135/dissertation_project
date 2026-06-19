@@ -127,6 +127,8 @@ def print_schema_storage(storage=None):
             print(f"Schema ID {i}: {node}")
 
 def build_schema(file_name):
+    # clear the schema storage before building a new schema
+    schema_storage.clear()
     parse(token_stream(file_name))
     return schema_storage
 

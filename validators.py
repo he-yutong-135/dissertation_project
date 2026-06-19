@@ -1,5 +1,6 @@
 from constants import ValidationStatus, type_map, ErrorType, ValidationError
 from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef
+import re
 
 def validate(value, schema_node, validator_storage):
     for rule, param in schema_node.constraints.items():
@@ -37,11 +38,43 @@ def validate_type(value, type):
     
     return isinstance(value, python_type)
 
+def validate_multiple_of(value, multiple):
+    if float(value) % float(multiple) != 0:
+        return False
+    return True
+
+def validate_exclusive_maximum(value, exclusive_max):
+    if float(value) >= exclusive_max:
+        return False
+    return True
+
+def validate_validate_minimum_len(value, min_len):
+    if len(value) < min_len:
+        return False
+    return True
+
+def validate_validate_maximum_len(value, max_len):
+    if len(value) > max_len:
+        return False
+    return True
+
+def validate_pattern(value, pattern):
+    print(f'validating pattern: {pattern} with value: {value}')
+    if not re.search(str(pattern), value):
+        return False
+    return True
+
 validator_storage = {
     "minimum": validate_minimum,
     "maximum": validate_maximum,
     "enum": validate_enum,
-    "type": validate_type
+    "type": validate_type,
+    "multipleOf": validate_multiple_of,
+    "exclusiveMaximum": validate_exclusive_maximum,
+    "minLength": validate_validate_minimum_len,
+    "maxLength": validate_validate_maximum_len,
+    "pattern": validate_pattern,
+    "default": lambda value, default: True, # default does not affect validation result
 }
 
 class ValidationEngine():
@@ -99,12 +132,17 @@ class ValidationEngine():
         current_schema = self.get_schema(schema_id)
         # print(f'{current_schema} with {value}')
         for key, param in current_schema.schemas.items():
+            # print(f'validating {key} with {param}')
             
             func = validator_storage.get(key)
-            if not func or not func(value, param):
+            if not func:
+                errors.append(ValidationError(ErrorType.SCHEMA_ERROR, f'schema[{key}({param})] not found'))
+            elif not func(value, param):
                 errors.append(ValidationError(ErrorType.BAD_VALUE, f'value({value}) violates schema[{key}({param})]'))
+            else:
+                print(ValidationError(ErrorType.SUCCESS, f'value({value}) satisfies schema[{key}({param})]'))
                 
-        if len(errors) > 0:
+        if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
             return ValidationStatus.INVALID, errors
         
         return ValidationStatus.VALID, errors

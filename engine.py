@@ -1,9 +1,11 @@
 from schema_builder import build_schema, ACCEPT_NODE
 from token_gen import token_stream
 from validators import ValidationStatus, ValidationEngine
-from constants import NodeType, schema_file, data_file, ValidationError, ErrorType, dent
+from constants import NodeType, schema_file, ValidationError, ErrorType, dent
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
 import logging
+import io
+from pathlib import Path
 
 
 class Node:
@@ -101,24 +103,14 @@ class Node:
 class Engine():
     def __init__(self, schema=None, target=None, max_depth=None, log_file_name=None):
         # set up logging
-        if log_file_name is None:
-            self.log_file_name = f"{target[:-5]}_{schema[:-5]}_validation.log"
-        else:
-            self.log_file_name = log_file_name
-
-        self.logger = logging.getLogger(self.log_file_name) 
-        self.logger.setLevel(logging.ERROR)
-
-        if not self.logger.handlers:
-            handler = logging.FileHandler(self.log_file_name, mode='w', encoding='utf-8')
-            formatter = logging.Formatter('%(message)s')
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-
+        self.logs = []
+        self.log_target = log_file_name if log_file_name else None
+            
+        # set up stack
         self.stack = [Node('root')] # adding a dummy node to eliminate the need of boundary checking
 
-        self.schema_storage = build_schema(schema) if schema is not None else None
-        self.token_stream = token_stream(target) if target is not None else None
+        self.schema_storage = build_schema(Path(schema).resolve()) if schema is not None else None
+        self.token_stream = token_stream(Path(target).resolve()) if target is not None else None
         self.validators = ValidationEngine(self.schema_storage)
         self.circuit_breaker = CircuitBreaker(max_depth)
 
@@ -160,11 +152,11 @@ class Engine():
         self.current_schema_id = node.parent.schema_id
         # print(f'pop: {node}')
         if not node.is_valid():
-            self.logger.error(f'- invalid json item: path({node.get_path()})')
-            self.logger.error(f'{dent}node info: {node.content()}')
+            self.logs.append(f'- invalid json item: path({node.get_path()})')
+            self.logs.append(f'{dent}node info: {node.content()}')
             for e in node.errors:
-                self.logger.error(f'{dent}{e}')
-            self.logger.error(f'-' * 120)
+                self.logs.append(f'{dent}{e}')
+            self.logs.append(f'-' * 120)
 
         return node
     
@@ -172,18 +164,19 @@ class Engine():
         if len(self.stack) == 1:
             raise ValueError('cannot pop the root node')
         unclose_error = ValidationError(ErrorType.UNCLOSED, 'unclosed structure')
-        self.logger.error(f'Validation incomplete: unclosed structure')
+        self.logs.append(f'Validation incomplete: unclosed structure')
         while(len(self.stack) > 1):
             node = self.stack.pop()
             # print(f'force pop: {node}')
-            self.logger.error(f'- unclosed json item: path({node.get_path()})')
-            self.logger.error(f'{dent}node info: {node.content()}')
+            self.logs.append(f'- unclosed json item: path({node.get_path()})')
+            self.logs.append(f'{dent}node info: {node.content()}')
             for e in node.errors:
-                self.logger.error(f'{dent}{e}')
-            self.logger.error(f'{dent}{unclose_error}')
-            self.logger.error('-' * 120)
+                self.logs.append(f'{dent}{e}')
+            self.logs.append(f'{dent}{unclose_error}')
+            self.logs.append('-' * 120)
 
     def verify_node(self, node: Node):
+        # print(f'verifying node: {node}')
         if node.type is NodeType.Value:
             node.state, node.errors = self.validators.validate_value(node.schema_id, node.value)
 
@@ -192,6 +185,7 @@ class Engine():
 
         if node.type is NodeType.Array:
             node.state, node.errors = self.validators.validate_array_complete(node.schema_id, node.children_states)
+
             
     def create_new_node(self, type, key=None):
         node = Node(key)
@@ -206,9 +200,8 @@ class Engine():
             
     def run(self):
         # clear the log file before writing
-        with open(self.log_file_name, 'w'): pass
-        self.logger.error(f'--- Validation Error Log ---')
-        self.logger.error('-' * 120)
+        self.logs.append(f'--- Validation Error Log ---')
+        self.logs.append('-' * 120)
         pending_key = None
 
         try:
@@ -258,21 +251,22 @@ class Engine():
                     node = self.pop()
             
         except CircuitBreakerException as e:
-            self.logger.error(f"Circuit breaker activated: {e}")
+            self.logs.append(f"Circuit breaker activated: {e}")
             # print(self.stack[-1].get_path())
             
         finally:
             if len(self.stack) > 1:
                 self.force_pop()
-            self.logger.error(f'(maximum stack depth: {self.circuit_breaker.max_recorded_depth})')
-            self.logger.error('--- validation done ---')
-            for handler in self.logger.handlers[:]:
-                handler.close()
-                self.logger.removeHandler(handler)
+            self.logs.append(f'(maximum stack depth: {self.circuit_breaker.max_recorded_depth})')
+            self.logs.append('--- validation done ---')
 
-        return self.log_file_name
+        if self.log_target:
+            with open(self.log_target, 'w') as f:
+                for log in self.logs:
+                    f.write(log + '\n')
+        return self.logs
 
 if __name__ == '__main__':
-    engine = Engine(schema=schema_file, target='data_unclosed_error.json')
+    engine = Engine(schema=schema_file, target='data_unclosed_error.json', log_file_name='validation_log.txt', max_depth=10)
     log_file = engine.run()
     print(f'Validation log saved to: {log_file}')
