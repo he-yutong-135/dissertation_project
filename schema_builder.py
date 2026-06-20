@@ -28,9 +28,6 @@ class SchemaRef:
     def __init__(self, schema_id: int):
         self.schema_id = schema_id
 
-    def __init__(self, schema_node: SchemaNode):
-        self.schema_id = schema_node.id
-
     def follow(self):
         return schema_storage[self.schema_id]
     
@@ -48,12 +45,14 @@ def new_node():
     node = SchemaNode()
     schema_storage.append(node)
     node.id = len(schema_storage) - 1
-    return node
+    return node.id
 
 def to_primitive(token):
     if isinstance(token, Token):
         return token.content.strip('"')
     return token.strip('"')
+
+
 
 
 ACCEPT_NODE = SchemaNode()
@@ -94,8 +93,8 @@ def parse(token_stream, first_token=None, expected_type=None):
 
 def parse_object(token_stream):
     # create a new schema node for this schema object
-    node = new_node()
-    # node = schema_storage[schema_id]
+    schema_id = new_node()
+    node = schema_storage[schema_id]
 
     # parse fields in the schema object
     for token in token_stream:
@@ -110,7 +109,7 @@ def parse_object(token_stream):
         node.schemas[key] = parse(token_stream)
         # print(f"Finished parsing field: {key}, value={node.schemas[key]}")
     # return a reference to this schema node
-    return SchemaRef(node)
+    return SchemaRef(schema_id)
 
 def parse_array(token_stream):
     arr = []
@@ -128,6 +127,15 @@ def print_schema_storage(storage=None):
     else:
         for i, node in enumerate(storage):
             print(f"Schema ID {i}: {node}")
+
+def extra_node(storage=None):
+    node = SchemaNode()
+    if storage is not None:
+        storage.append(node)
+        node.id = len(storage) - 1
+    else:
+        raise ValueError("Storage cannot be None")
+    return node
 
 def build_schema(file_name):
     # clear the schema storage before building a new schema

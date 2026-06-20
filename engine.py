@@ -1,4 +1,4 @@
-from schema_builder import build_schema, ACCEPT_NODE
+from schema_builder import build_schema, ACCEPT_NODE, print_schema_storage
 from token_gen import token_stream
 from validators import ValidationStatus, ValidationEngine
 from constants import NodeType, schema_file, ValidationError, ErrorType, dent
@@ -143,7 +143,7 @@ class Engine():
 
         self.current_node = node
         self.current_schema_id = node.schema_id
-        # print(f'push: {node}')
+        # print(f'push: {node}, schema_id: {schema_id}')
         # print(f'push: {self.current_node.get_path()}')
         self.stack.append(node)
         self.circuit_breaker.on_push()
@@ -279,6 +279,8 @@ class Engine():
             with open(self.log_target, 'w') as f:
                 for log in self.logs:
                     f.write(log + '\n')
+
+        # print_schema_storage(self.schema_storage)
         return self.logs
 
 if __name__ == '__main__':

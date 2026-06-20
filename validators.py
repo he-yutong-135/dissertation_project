@@ -1,5 +1,5 @@
 from constants import ValidationStatus, type_map, ErrorType, ValidationError
-from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, new_node
+from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, extra_node, print_schema_storage
 import re
 
 def validate(value, schema_node, validator_storage):
@@ -79,7 +79,7 @@ validator_storage = {
     "maxItems": validate_maximum
 }
 
-array_children_schemas = ['minItems', 'maxItems', 'items']
+array_children_schemas = ['minItems', 'maxItems']
 object_children_schemas = ['properties', 'required']
 
 class ValidationEngine():
@@ -96,43 +96,77 @@ class ValidationEngine():
     def find_child(self, schema_id, key):
         # if is permissive schema and no key provided -> the outermost object, returns the first schema id
         # if key is provided -> inside a node with no constraints, return 
-        # print(f'find child: {schema_id}, {key}')
         if schema_id == ACCEPT_NODE.id:
             return 0 if key == 'top_object' else ACCEPT_NODE.id
         if schema_id == REJECT_NODE.id:
             return REJECT_NODE.id
         
         parent_schema = self.get_schema(schema_id)
+        # print(f'parent schema: {parent_schema}')
+
+        child_schema_id = None
 
         if parent_schema.schemas['type'] == "array":
+            
             child_schema_id = parent_schema.schemas['items'].value()
-            return child_schema_id
+            # print(f'array schema: key: {key} -> child schema: {child_schema_id}')
+            # return child_schema_id
 
-        if parent_schema.schemas['type'] == "object":
+        elif parent_schema.schemas['type'] == "object":
+            # print(f'parent schema: {parent_schema}, key: {key}')
             children_ref = parent_schema.schemas['properties']
             add_props = parent_schema.schemas.get('additionalProperties', True)
             if children_ref and key in children_ref.follow().schemas.keys():
+                # print(f'find child: {schema_id}, {key} -> {children_ref.follow().schemas[key]}')
                 child_ref = children_ref.follow().schemas.get(key, None)
+                # print(f'find child ref: {key} -> {child_ref}')
                 if child_ref:
                     # there is a schema with this key, return the id directly
-                    return child_ref.value()
+                    child_schema_id =  child_ref.value()
             
             # if no corresponding schema found
-            if add_props: 
+            elif add_props: 
                 return ACCEPT_NODE.id
-            if isinstance(add_props, SchemaRef): return add_props.value()
+            elif isinstance(add_props, SchemaRef): child_schema_id = add_props.value()
             
-        else:
-            # if the current node is either an object nor an array, it cannot have a child node
+        if child_schema_id is None:
+            # if the current node is either an object nor an array, it should not have a child node
             return REJECT_NODE.id
+
+        if child_schema_id != REJECT_NODE.id and child_schema_id != ACCEPT_NODE.id:
+            self.update_schema(child_schema_id)
         
-        return REJECT_NODE.id
+        
+        return child_schema_id
+    
+
+    def update_schema(self, schema_id):
+        schema = self.get_schema(schema_id)
+        # print(f'updating schema: {schema}')
+        type = schema.schemas.get('type', None)
+        # value node does not have complex validation rules
+        if type == 'object' or type is None:
+            return
+        
+        # if the schema is of type array, move its schema on children to the items schema
+        if type == 'array':
+            items_ref = schema.schemas.get('items', None)
+            if items_ref:
+                items_schema_id = items_ref.value()
+                items_schema = self.get_schema(items_schema_id)
+                for key, value in schema.schemas.items():
+                    if key in array_children_schemas:
+                        items_schema.schemas[key] = value
+                        schema.schemas[key] = None
+
+        schema.schemas = {k: v for k, v in schema.schemas.items() if v is not None}
     
     def validate_value(self, schema_id, value):
         errors = []
         if schema_id == -1:
             return ValidationStatus.VALID, errors
         if schema_id == -2:
+            # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
             return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, f'unexpected value or object: {value}')]
         
         current_schema = self.get_schema(schema_id)
@@ -145,8 +179,8 @@ class ValidationEngine():
                 errors.append(ValidationError(ErrorType.SCHEMA_ERROR, f'schema[{key}({param})] not found'))
             elif not func(value, param):
                 errors.append(ValidationError(ErrorType.BAD_VALUE, f'value({value}) violates schema[{key}({param})]'))
-            else:
-                print(ValidationError(ErrorType.SUCCESS, f'value({value}) satisfies schema[{key}({param})]'))
+            # else:
+            #     print(ValidationError(ErrorType.SUCCESS, f'value({value}) satisfies schema[{key}({param})]'))
                 
         if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
             return ValidationStatus.INVALID, errors
