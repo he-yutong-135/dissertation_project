@@ -75,6 +75,8 @@ validator_storage = {
     "maxLength": validate_validate_maximum_len,
     "pattern": validate_pattern,
     "default": lambda value, default: True, # default does not affect validation result
+    "minItems": validate_minimum,
+    "maxItems": validate_maximum
 }
 
 class ValidationEngine():
@@ -100,7 +102,15 @@ class ValidationEngine():
         parent_schema = self.get_schema(schema_id)
 
         if parent_schema.schemas['type'] == "array":
-            return parent_schema.schemas['items'].value()
+            child_schema_id = parent_schema.schemas['items'].value()
+            # child_schema = self.get_schema(child_schema_id)
+            # if parent_schema.schemas.get('minItems') is not None:
+            #     child_schema.schemas['minItems'] = parent_schema.schemas.get('minItems')
+            #     parent_schema.schemas['minItems'] = None
+            # if parent_schema.schemas.get('maxItems') is not None:
+            #     child_schema.schemas['maxItems'] = parent_schema.schemas.get('maxItems')
+            #     parent_schema.schemas['maxItems'] = None
+            return child_schema_id
 
         if parent_schema.schemas['type'] == "object":
             children_ref = parent_schema.schemas['properties']

@@ -3,8 +3,6 @@ from token_gen import token_stream
 from validators import ValidationStatus, ValidationEngine
 from constants import NodeType, schema_file, ValidationError, ErrorType, dent
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
-import logging
-import io
 from pathlib import Path
 
 
@@ -21,6 +19,17 @@ class Node:
         self.children_states = None # this records the validation status of each child node
 
         self.schema_id = 0
+
+    def __eq__(self, other):
+        if not isinstance(other, Node):
+            return False
+        if self.type != other.type:
+            return False
+        if self.type == NodeType.Value:
+            return self.value == other.value
+        else:
+            return all(self.children[k] == other.children[k] for k in self.children.keys())
+
 
     def is_valid(self):
         return self.state == ValidationStatus.VALID
@@ -125,12 +134,14 @@ class Engine():
         self.token_stream = token_stream(file_name)
 
     def push(self, node):
-        child_schema_id = self.validators.find_child(self.current_schema_id, node.key)
-        node.schema_id = child_schema_id
+        # bind the node with its schema
+        schema_id = self.validators.find_child(self.current_schema_id, node.key)
+        node.schema_id = schema_id
 
         self.current_node = node
         self.current_schema_id = node.schema_id
-        # print(f'push: {node}')
+        print(f'push: {node}')
+        print(f'push: {self.current_node.get_path()}')
         self.stack.append(node)
         self.circuit_breaker.on_push()
 
@@ -145,12 +156,13 @@ class Engine():
         # after verifying the node, register its state to the parent node
         # then remove it from the children dict
         node.parent.register_state(node)
-        # node.parent.remove_child(node)
+        node.parent.remove_child(node)
 
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
         self.current_schema_id = node.parent.schema_id
-        # print(f'pop: {node}')
+        print(f'pop: {node}')
+        print(f'pop: {self.current_node.get_path()}')
         if not node.is_valid():
             self.logs.append(f'- invalid json item: path({node.get_path()})')
             self.logs.append(f'{dent}node info: {node.content()}')
