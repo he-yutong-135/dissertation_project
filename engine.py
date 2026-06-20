@@ -19,6 +19,7 @@ class Node:
         self.children_states = None # this records the validation status of each child node
 
         self.schema_id = 0
+        self.children_schema_id = None # this record the id of schemas for all children nodes
 
     def __eq__(self, other):
         if not isinstance(other, Node):
@@ -90,7 +91,9 @@ class Node:
         if self.children is None or node.key not in self.children.keys():
             raise ValueError('fail to remove the child')
 
-        self.children.pop(node.key)
+        # self.children.pop(node.key)
+        # replace the child with its value if it is a value node, else None
+        self.children[node.key] = node.value
 
     def add_value(self, value):
         if self.type is NodeType.Value:
@@ -140,8 +143,8 @@ class Engine():
 
         self.current_node = node
         self.current_schema_id = node.schema_id
-        print(f'push: {node}')
-        print(f'push: {self.current_node.get_path()}')
+        # print(f'push: {node}')
+        # print(f'push: {self.current_node.get_path()}')
         self.stack.append(node)
         self.circuit_breaker.on_push()
 
@@ -161,8 +164,8 @@ class Engine():
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
         self.current_schema_id = node.parent.schema_id
-        print(f'pop: {node}')
-        print(f'pop: {self.current_node.get_path()}')
+        # print(f'pop: {node}')
+        # print(f'pop: {self.current_node.get_path()}')
         if not node.is_valid():
             self.logs.append(f'- invalid json item: path({node.get_path()})')
             self.logs.append(f'{dent}node info: {node.content()}')

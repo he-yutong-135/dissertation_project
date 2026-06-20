@@ -1,5 +1,5 @@
 from constants import ValidationStatus, type_map, ErrorType, ValidationError
-from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef
+from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, new_node
 import re
 
 def validate(value, schema_node, validator_storage):
@@ -79,6 +79,9 @@ validator_storage = {
     "maxItems": validate_maximum
 }
 
+array_children_schemas = ['minItems', 'maxItems', 'items']
+object_children_schemas = ['properties', 'required']
+
 class ValidationEngine():
     def __init__(self, schema_storage):
         self.schema_storage = schema_storage
@@ -103,13 +106,6 @@ class ValidationEngine():
 
         if parent_schema.schemas['type'] == "array":
             child_schema_id = parent_schema.schemas['items'].value()
-            # child_schema = self.get_schema(child_schema_id)
-            # if parent_schema.schemas.get('minItems') is not None:
-            #     child_schema.schemas['minItems'] = parent_schema.schemas.get('minItems')
-            #     parent_schema.schemas['minItems'] = None
-            # if parent_schema.schemas.get('maxItems') is not None:
-            #     child_schema.schemas['maxItems'] = parent_schema.schemas.get('maxItems')
-            #     parent_schema.schemas['maxItems'] = None
             return child_schema_id
 
         if parent_schema.schemas['type'] == "object":
