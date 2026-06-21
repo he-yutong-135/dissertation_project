@@ -1,5 +1,5 @@
 from constants import ValidationStatus, type_map, ErrorType, ValidationError
-from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, extra_node, print_schema_storage
+from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, SchemaNode, extra_node, print_schema_storage
 import re
 
 def validate(value, schema_node, validator_storage):
@@ -89,6 +89,29 @@ array_validators = {
     # "type": lambda type: type == "array"
 }
 
+def validate_dependent_required(children, dependentRequired):
+    keys = children.keys() if children else []
+    # print(type(dependentRequired))
+    for k, v in dependentRequired.items():
+        if k in keys:
+            for item in v:
+                if item not in keys:
+                    return False
+    return True
+
+def validate_required(children, required):
+    keys = children.keys() if children else []
+    for item in required:
+        if item not in keys:
+            return False
+        
+    return True
+
+object_validators = {
+    "dependentRequired": validate_dependent_required,
+    "required": validate_required
+}
+
 array_children_schemas = ['minItems', 'maxItems']
 object_children_schemas = ['properties', 'required']
 
@@ -124,7 +147,7 @@ class ValidationEngine():
 
         elif parent_schema.schemas['type'] == "object":
             # print(f'parent schema: {parent_schema}, key: {key}')
-            children_ref = parent_schema.schemas['properties']
+            children_ref = parent_schema.schemas.get('properties', None)
             add_props = parent_schema.schemas.get('additionalProperties', True)
             if children_ref and key in children_ref.follow().schemas.keys():
                 # print(f'find child: {schema_id}, {key} -> {children_ref.follow().schemas[key]}')
@@ -211,6 +234,7 @@ class ValidationEngine():
         if type != 'array': 
             return ValidationStatus.INVALID, [ValidationError(ErrorType.SCHEMA_ERROR, f'schema type mismatch: expected array but got {type}')]
 
+        # ordinary schemas verification
         for key, param in current_schema.schemas.items():
             
             func = array_validators.get(key, None)
@@ -240,6 +264,25 @@ class ValidationEngine():
         type = current_schema.schemas.get('type', None)
         if type != 'object': 
             return ValidationStatus.INVALID, [ValidationError(ErrorType.SCHEMA_ERROR, f'schema type mismatch: expected object but got {type}')]
+        
+        # ordinary schemas verification
+        for key, param in current_schema.schemas.items():
+            while isinstance(param, SchemaRef):
+                param = param.follow()
+
+            # print(f'param: {param}')
+            if isinstance(param, SchemaNode): param = param.content()
+            
+            func = object_validators.get(key, None)
+            if func: print(f'found array validator for {key}, {param}: {children}')
+            if not func:
+                if key in ['properties', 'contains', 'type', 'additionalProperties']: continue
+                errors.append(ValidationError(ErrorType.SCHEMA_ERROR, f'schema[{key}({param})] not found'))
+            elif not func(children, param):
+                errors.append(ValidationError(ErrorType.BAD_VALUE, f'array with children({children}) violates schema[{key}({param})]'))
+
+        if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
+            return ValidationStatus.INVALID, errors
 
         return ValidationStatus.VALID, errors
             
@@ -248,6 +291,9 @@ class ValidationEngine():
             
         parent_schema = self.get_schema(schema_id)
         required = parent_schema.schemas.get('required', None)
+
+        if children_states is None:
+            return ValidationStatus.VALID, errors
         
         for key, value in children_states.items():
             if not value:
@@ -255,20 +301,22 @@ class ValidationEngine():
         if len(errors) > 0:   
             return ValidationStatus.INVALID, errors
 
-        if not required:
-            return ValidationStatus.VALID, errors
+        # if not required:
+        #     return ValidationStatus.VALID, errors
         
-        for key in required:
-            if key not in children_states.keys():
-                errors.append(ValidationError(ErrorType.INCOMPLETE, f'child({key}) is required but does not exist'))
+        # for key in required:
+        #     if key not in children_states.keys():
+        #         errors.append(ValidationError(ErrorType.INCOMPLETE, f'child({key}) is required but does not exist'))
                 
-        if len(errors) > 0:    
-            return ValidationStatus.INVALID, errors
+        # if len(errors) > 0:    
+        #     return ValidationStatus.INVALID, errors
             
         return ValidationStatus.VALID, errors
     
     def validate_array_complete(self, schema_id, children_states):
         errors = []
+        if children_states is None:
+            return ValidationStatus.VALID, errors
         for key, state in children_states.items():
             if not state:
                 errors.append(ValidationError(ErrorType.INCOMPLETE, f'value {key} not valid'))

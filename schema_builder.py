@@ -20,6 +20,8 @@ class SchemaNode:
         self.id = 0
         self.schemas = {} # key -> schema data
 
+    def content(self):
+        return self.schemas
 
     def __repr__(self):
         return f"SchemaNode(id={self.id}, schemas={self.schemas})"

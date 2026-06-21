@@ -3,6 +3,9 @@ from token_gen import token_stream
 from validators import ValidationStatus, ValidationEngine
 from constants import NodeType, schema_file, ValidationError, ErrorType, dent
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
+from constants import get_fingerprint_obj, get_fingerprint_arr
+
+
 from pathlib import Path
 
 
@@ -90,9 +93,15 @@ class Node:
     def remove_child(self, node):
         if self.children is None or node.key not in self.children.keys():
             raise ValueError('fail to remove the child')
+        
+        # calculate the fingerprint of the child node and store it in the parent node's children dict
+        if node.type is NodeType.Object:
+            node.value = get_fingerprint_obj(node.children)
+        if node.type is NodeType.Array:
+            node.value = get_fingerprint_arr(node.children.values())
 
         # self.children.pop(node.key)
-        # replace the child with its value if it is a value node, else None
+        # if the node is of type Value, stores its value directly
         self.children[node.key] = node.value
 
     def add_value(self, value):

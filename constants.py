@@ -101,3 +101,20 @@ MAX_DEPTH = 10
 dent = '  '
 
 schema_file, data_file = 'schema.json', 'data.json'
+
+def get_fingerprint_obj(children: dict):
+    if children is None:
+        return hash(None)
+    items = []
+    for k in sorted(children.keys()):
+        child = children[k] # child is guaranteed to be a primitive value
+        items.append((k, child))
+
+    return hash(tuple(items))
+
+def get_fingerprint_arr(children: list):
+    if children is None:
+        return hash(None)
+    return hash(tuple(children))
+
+
