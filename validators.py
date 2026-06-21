@@ -79,6 +79,16 @@ validator_storage = {
     "maxItems": validate_maximum
 }
 
+def validate_unique_items(children, required):
+    if required:
+        return len(set(children)) == len(children)
+    return True
+
+array_validators = {
+    "uniqueItems": validate_unique_items,
+    # "type": lambda type: type == "array"
+}
+
 array_children_schemas = ['minItems', 'maxItems']
 object_children_schemas = ['properties', 'required']
 
@@ -185,6 +195,52 @@ class ValidationEngine():
         if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
             return ValidationStatus.INVALID, errors
         
+        return ValidationStatus.VALID, errors
+    
+    def validate_array(self, schema_id, type, children):
+        errors = []
+        if schema_id == -1:
+            return ValidationStatus.VALID, errors
+        if schema_id == -2:
+            # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
+            return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, f'unexpected array')]
+        
+        current_schema = self.get_schema(schema_id)
+        # type check
+        type = current_schema.schemas.get('type', None)
+        if type != 'array': 
+            return ValidationStatus.INVALID, [ValidationError(ErrorType.SCHEMA_ERROR, f'schema type mismatch: expected array but got {type}')]
+
+        for key, param in current_schema.schemas.items():
+            
+            func = array_validators.get(key, None)
+            # if func: print(f'found array validator for {key}, {param}: {children}')
+            if not func:
+                if key in ['items', 'contains', 'type']: continue
+                errors.append(ValidationError(ErrorType.SCHEMA_ERROR, f'schema[{key}({param})] not found'))
+            elif not func(children, param):
+                errors.append(ValidationError(ErrorType.BAD_VALUE, f'array with children({children}) violates schema[{key}({param})]'))
+
+        if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
+            return ValidationStatus.INVALID, errors
+        
+        return ValidationStatus.VALID, errors
+        
+
+    def validate_object(self, schema_id, type, children):
+        errors = []
+        if schema_id == -1:
+            return ValidationStatus.VALID, errors
+        if schema_id == -2:
+            # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
+            return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, f'unexpected array')]
+        
+        current_schema = self.get_schema(schema_id)
+        # type check
+        type = current_schema.schemas.get('type', None)
+        if type != 'object': 
+            return ValidationStatus.INVALID, [ValidationError(ErrorType.SCHEMA_ERROR, f'schema type mismatch: expected object but got {type}')]
+
         return ValidationStatus.VALID, errors
             
     def validate_object_complete(self, schema_id, children_states):

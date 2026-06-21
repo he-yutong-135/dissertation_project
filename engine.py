@@ -151,6 +151,10 @@ class Engine():
     def pop(self):
         node = self.stack.pop()
         self.circuit_breaker.on_pop()
+        if node.type is not NodeType.Value:
+            print(f'pop: {node.children}')
+
+
         if node.parent is None:
             raise ValueError('standalone node')
         
@@ -196,12 +200,19 @@ class Engine():
             node.state, node.errors = self.validators.validate_value(node.schema_id, node.value)
 
         if node.type is NodeType.Object:
-            node.state, node.errors = self.validators.validate_object_complete(node.schema_id, node.children_states)
+            self_state, self_errors = self.validators.validate_object(node.schema_id, node.type, node.children) # a dict 
+            children_state, children_errors = self.validators.validate_object_complete(node.schema_id, node.children_states)
+            node.errors = self_errors + children_errors
+            if len(node.errors) > 0:
+                node.state = ValidationStatus.INVALID
 
         if node.type is NodeType.Array:
-            node.state, node.errors = self.validators.validate_array_complete(node.schema_id, node.children_states)
+            self_state, self_errors = self.validators.validate_array(node.schema_id, node.type, node.children.values()) # a list 
+            children_state, children_errors = self.validators.validate_array_complete(node.schema_id, node.children_states)
+            node.errors = self_errors + children_errors
+            if len(node.errors) > 0:
+                node.state = ValidationStatus.INVALID
 
-            
     def create_new_node(self, type, key=None):
         node = Node(key)
         node.type = type
