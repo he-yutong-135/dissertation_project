@@ -14,6 +14,7 @@ class Node:
         self.key = key
         self.value = None # primitive only
         self.state = ValidationStatus.VALID
+        self.complex_state = {}
         self.errors = []
         self.parent = None
         self.type = NodeType.Object # OBJECT / ARRAY / VALUE
@@ -147,12 +148,12 @@ class Engine():
 
     def push(self, node):
         # bind the node with its schema
-        schema_id = self.validators.find_child(self.current_schema_id, node.key)
+        schema_id = self.validators.find_child(self.current_schema_id, node.key, node.parent.type)
         node.schema_id = schema_id
 
         self.current_node = node
         self.current_schema_id = node.schema_id
-        # print(f'push: {node}, schema_id: {schema_id}')
+        # print(f'push: {node}, schema_id: {schema_id}, parent type: {node.parent.type}, node type: {node.type}')
         # print(f'push: {self.current_node.get_path()}')
         self.stack.append(node)
         self.circuit_breaker.on_push()
@@ -160,8 +161,8 @@ class Engine():
     def pop(self):
         node = self.stack.pop()
         self.circuit_breaker.on_pop()
-        if node.type is not NodeType.Value:
-            print(f'pop: {node.children}')
+        # if node.type is not NodeType.Value:
+        #     print(f'pop: {node.children}')
 
 
         if node.parent is None:

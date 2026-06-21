@@ -137,7 +137,7 @@ def extra_node(storage=None):
         node.id = len(storage) - 1
     else:
         raise ValueError("Storage cannot be None")
-    return node
+    return SchemaRef(node.id)
 
 def build_schema(file_name):
     # clear the schema storage before building a new schema
