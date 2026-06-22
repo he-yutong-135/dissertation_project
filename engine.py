@@ -210,14 +210,14 @@ class Engine():
             node.state, node.errors = self.validators.validate_value(node.schema_id, node.value)
 
         if node.type is NodeType.Object:
-            self_state, self_errors = self.validators.validate_object(node.schema_id, node.type, node.children) # a dict 
+            self_state, self_errors = self.validators.validate_object(node.schema_id, node.children) # a dict 
             children_state, children_errors = self.validators.validate_object_complete(node.schema_id, node.children_states)
             node.errors = self_errors + children_errors
             if len(node.errors) > 0:
                 node.state = ValidationStatus.INVALID
 
         if node.type is NodeType.Array:
-            self_state, self_errors = self.validators.validate_array(node.schema_id, node.type, node.children.values()) # a list 
+            self_state, self_errors = self.validators.validate_array(node.schema_id, list(node.children.values())) # a list 
             children_state, children_errors = self.validators.validate_array_complete(node.schema_id, node.children_states)
             node.errors = self_errors + children_errors
             if len(node.errors) > 0:
@@ -286,13 +286,16 @@ class Engine():
 
                     node = self.pop()
             
+            # if stack has remaining nodes, they are not closed, force pop them
+            if len(self.stack) > 1:
+                self.force_pop()
+        
         except CircuitBreakerException as e:
             self.logs.append(f"Circuit breaker activated: {e}")
             # print(self.stack[-1].get_path())
             
         finally:
-            if len(self.stack) > 1:
-                self.force_pop()
+            
             self.logs.append(f'(maximum stack depth: {self.circuit_breaker.max_recorded_depth})')
             self.logs.append('--- validation done ---')
 

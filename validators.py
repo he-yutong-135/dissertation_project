@@ -26,17 +26,17 @@ def validate_enum(value, enum_list):
     return True
 
 def validate_type(value, type):
+    # print(f'validate_type: {value}, {type}')
     
-    if value == "object" or value == "array":
-        return value == type
-
-    # print(f'validate_type: {type}')
     python_type = type_map.get(type, None)
     if not python_type:
         return False
     
     # bool should not be classified as integer in json
     if type == "integer" and isinstance(value, bool):
+        return False
+    
+    if type == "number" and isinstance(value, bool):
         return False
     
     return isinstance(value, python_type)
@@ -80,30 +80,16 @@ def validate_pattern(value, pattern):
         return False
     return True
 
-validator_storage = {
-    "minimum": validate_minimum,
-    "maximum": validate_maximum,
-    "enum": validate_enum,
-    "type": validate_types,
-    "multipleOf": validate_multiple_of,
-    "exclusiveMaximum": validate_exclusive_maximum,
-    "minLength": validate_validate_minimum_len,
-    "maxLength": validate_validate_maximum_len,
-    "pattern": validate_pattern,
-    "default": lambda value, default: True, # default does not affect validation result
-    "minItems": validate_minimum,
-    "maxItems": validate_maximum
-}
+def validate_minItems(value: list, minNum):
+    return len(value) >= minNum
+
+def validate_maxItems(value: list, maxNum):
+    return len(value) <= maxNum
 
 def validate_unique_items(children, required):
     if required:
         return len(set(children)) == len(children)
     return True
-
-array_validators = {
-    "uniqueItems": validate_unique_items,
-    # "type": lambda type: type == "array"
-}
 
 def validate_dependent_required(children, dependentRequired):
     keys = children.keys() if children else []
@@ -123,13 +109,31 @@ def validate_required(children, required):
         
     return True
 
-object_validators = {
+validator_storage = {
+    "minimum": validate_minimum,
+    "maximum": validate_maximum,
+    "enum": validate_enum,
+    "type": validate_types,
+    "multipleOf": validate_multiple_of,
+    "exclusiveMaximum": validate_exclusive_maximum,
+    "minLength": validate_validate_minimum_len,
+    "maxLength": validate_validate_maximum_len,
+    "pattern": validate_pattern,
+    "default": lambda value, default: True, # default does not affect validation result
+
+    # array validators
+    "uniqueItems": validate_unique_items,
+    "minItems": validate_minItems,
+    "maxItems": validate_maxItems,
+
+    # object validators
     "dependentRequired": validate_dependent_required,
     "required": validate_required
 }
 
-array_children_schemas = ['minItems', 'maxItems']
-object_children_schemas = ['properties', 'required']
+
+# array_children_schemas = ['minItems', 'maxItems']
+# object_children_schemas = ['properties', 'required']
 
 class ValidationEngine():
     def __init__(self, schema_storage):
@@ -184,36 +188,36 @@ class ValidationEngine():
             # if the current node is either an object nor an array, it should not have a child node
             return REJECT_NODE.id
 
-        if child_schema_id != REJECT_NODE.id and child_schema_id != ACCEPT_NODE.id:
-            self.update_schema(child_schema_id)
+        # if child_schema_id != REJECT_NODE.id and child_schema_id != ACCEPT_NODE.id:
+        #     self.update_schema(child_schema_id)
         
         
         return child_schema_id
     
-    def update_schema(self, schema_id):
-        schema = self.get_schema(schema_id)
-        # print(f'updating schema: {schema}')
-        types = schema.schemas.get('type', None)
-        # value node does not have complex validation rules
-        # if type == 'object' or type is None:
-        if not validate_types('array', types):
-            return
+    # def update_schema(self, schema_id):
+    #     schema = self.get_schema(schema_id)
+    #     # print(f'updating schema: {schema}')
+    #     types = schema.schemas.get('type', None)
+    #     # value node does not have complex validation rules
+    #     # if type == 'object' or type is None:
+    #     if not validate_types('array', types):
+    #         return
         
-        # if the schema is of type array, move its schema on children to the items schema
-        # if nodeType is NodeType.Array:
-        # if no items is found, create a new node for the extra schema
-        items_ref = schema.schemas.setdefault('items', extra_node(self.schema_storage))
-        if items_ref:
-            items_schema_id = items_ref.value()
-            items_schema = self.get_schema(items_schema_id)
-            # print(f"items_schema_id: {items_schema_id}")
-            for key, value in schema.schemas.items():
-                if key in array_children_schemas:
-                    items_schema.schemas[key] = value
-                    schema.schemas[key] = None
+    #     # if the schema is of type array, move its schema on children to the items schema
+    #     # if nodeType is NodeType.Array:
+    #     # if no items is found, create a new node for the extra schema
+    #     items_ref = schema.schemas.setdefault('items', extra_node(self.schema_storage))
+    #     if items_ref:
+    #         items_schema_id = items_ref.value()
+    #         items_schema = self.get_schema(items_schema_id)
+    #         # print(f"items_schema_id: {items_schema_id}")
+    #         for key, value in schema.schemas.items():
+    #             if key in array_children_schemas:
+    #                 items_schema.schemas[key] = value
+    #                 schema.schemas[key] = None
 
                     
-        schema.schemas = {k: v for k, v in schema.schemas.items() if v is not None}
+    #     schema.schemas = {k: v for k, v in schema.schemas.items() if v is not None}
     
     def validate_value(self, schema_id, value):
         errors = []
@@ -241,7 +245,7 @@ class ValidationEngine():
         
         return ValidationStatus.VALID, errors
     
-    def validate_array(self, schema_id, type, children):
+    def validate_array(self, schema_id, children):
         errors = []
         if schema_id == -1:
             return ValidationStatus.VALID, errors
@@ -251,14 +255,15 @@ class ValidationEngine():
         
         current_schema = self.get_schema(schema_id)
         # type check
-        types = current_schema.schemas.get('type', None)
-        if not validate_types('array', types): 
-            return ValidationStatus.INVALID, [ValidationError(ErrorType.SCHEMA_ERROR, f'schema type mismatch: expected array but got {types}')]
+        # types = current_schema.schemas.get('type', None)
+        # print(f'array with types: {types}')
+        # if types and not validate_types('array', types): 
+        #     return ValidationStatus.INVALID, [ValidationError(ErrorType.SCHEMA_ERROR, f'schema type mismatch: expected array but got {types}')]
 
         # ordinary schemas verification
         for key, param in current_schema.schemas.items():
             
-            func = array_validators.get(key, None)
+            func = validator_storage.get(key, None)
             # if func: print(f'found array validator for {key}, {param}: {children}')
             if not func:
                 if key in ['items', 'contains', 'type']: continue
@@ -272,7 +277,7 @@ class ValidationEngine():
         return ValidationStatus.VALID, errors
         
 
-    def validate_object(self, schema_id, type, children):
+    def validate_object(self, schema_id, children):
         errors = []
         if schema_id == -1:
             return ValidationStatus.VALID, errors
@@ -282,19 +287,22 @@ class ValidationEngine():
         
         current_schema = self.get_schema(schema_id)
         # type check
-        types = current_schema.schemas.get('type', None)
-        if not validate_types('object', types): # type != 'object': 
-            return ValidationStatus.INVALID, [ValidationError(ErrorType.SCHEMA_ERROR, f'schema type mismatch: expected object but got {type}')]
+        # types = current_schema.schemas.get('type', None)
+        # print(f'object with types: {types}')
+        # if types and not validate_types('object', types): # type != 'object': 
+        #     return ValidationStatus.INVALID, [ValidationError(ErrorType.SCHEMA_ERROR, f'schema type mismatch: expected object but got {types}')]
         
         # ordinary schemas verification
+        # print(f'current_schema: {current_schema}')
         for key, param in current_schema.schemas.items():
+            # print(f'before param: {param}')
             while isinstance(param, SchemaRef):
                 param = param.follow()
 
             # print(f'param: {param}')
             if isinstance(param, SchemaNode): param = param.content()
             
-            func = object_validators.get(key, None)
+            func = validator_storage.get(key, None)
             # if func: print(f'found array validator for {key}, {param}: {children}')
             if not func:
                 if key in ['properties', 'contains', 'type', 'additionalProperties']: continue
