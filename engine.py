@@ -32,6 +32,8 @@ class Node:
             return False
         if self.type == NodeType.Value:
             return self.value == other.value
+        if self.children.keys() != other.children.keys():
+            return False
         else:
             return all(self.children[k] == other.children[k] for k in self.children.keys())
 
@@ -209,15 +211,15 @@ class Engine():
         if node.type is NodeType.Value:
             node.state, node.errors = self.validators.validate_value(node.schema_id, node.value)
 
-        if node.type is NodeType.Object:
-            self_state, self_errors = self.validators.validate_object(node.schema_id, node.children) # a dict 
+        elif node.type is NodeType.Object:
+            self_state, self_errors = self.validators.validate_node(node.schema_id, node.children) # a dict 
             children_state, children_errors = self.validators.validate_object_complete(node.schema_id, node.children_states)
             node.errors = self_errors + children_errors
             if len(node.errors) > 0:
                 node.state = ValidationStatus.INVALID
 
-        if node.type is NodeType.Array:
-            self_state, self_errors = self.validators.validate_array(node.schema_id, list(node.children.values())) # a list 
+        elif node.type is NodeType.Array:
+            self_state, self_errors = self.validators.validate_node(node.schema_id, list(node.children.values())) # a list 
             children_state, children_errors = self.validators.validate_array_complete(node.schema_id, node.children_states)
             node.errors = self_errors + children_errors
             if len(node.errors) > 0:

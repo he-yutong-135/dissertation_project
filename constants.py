@@ -23,37 +23,6 @@ class ValidationStatus(StrEnum):
 
     def __bool__(self):
         return self is ValidationStatus.VALID
-    
-@total_ordering    
-class LiteralValue:
-    def __init__(self, value):
-        self._value = value
-    
-    def __eq__(self, value):
-        return self._value == value
-    
-    def __lt__(self, value):
-        return self._value < value
-    
-    def __str__(self):
-        return str(self._value)
-    
-    def __bool__(self):
-        if not self._value:
-            return False
-        return True
-    
-    def __hash__(self):
-        return hash(self._value)
-    
-    def __repr__(self):
-        return f"{self._value}"
-    
-    def __float__(self):
-        return float(self._value)
-
-    def __int__(self):
-        return int(self._value)
 
     
 class ErrorType(StrEnum):

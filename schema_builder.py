@@ -1,19 +1,9 @@
 import sys
 from token_gen import token_stream, TokenType, Token
-from constants import LiteralValue
 
 schema_storage = []
 
-
 TEST_FILE = 'schema.json'
-
-# def retrieve_schema(id=-1):
-#     if id == -1:
-#         return ACCEPT_NODE
-#     if id == -2:
-#         return REJECT_NODE
-#     else:
-#         return schema_storage[id]
     
 class SchemaNode:
     def __init__(self):
@@ -59,12 +49,10 @@ def to_primitive(token):
 
 ACCEPT_NODE = SchemaNode()
 ACCEPT_NODE.id = -1
-# ACCEPT_NODE.schemas['*'] = LiteralValue(True)
 ACCEPT_NODE_ID = ACCEPT_NODE.id
 
 REJECT_NODE = SchemaNode()
 REJECT_NODE.id = -2
-# REJECT_NODE.schemas['*'] = LiteralValue(False)
 REJECT_NODE_ID = REJECT_NODE.id
     
 
@@ -89,7 +77,7 @@ def parse(token_stream, first_token=None, expected_type=None):
         return parse_object(token_stream)
     
     if token.type == TokenType.VALUE:
-        return LiteralValue(token.content)
+        return token.content
     else:
         return token.content
 
