@@ -95,7 +95,7 @@ def assert_all_logs(logs, error_dict: dict):
         path = log.path
 
         target_errors = error_dict.get(path, None)
-        assert target_errors is not None, f'extra errors added: {log.path}({logs.errors})'
+        assert target_errors is not None, f'extra errors added: {log.path}({log.errors})'
         assert_single_log(log, path, target_errors)
         
     
