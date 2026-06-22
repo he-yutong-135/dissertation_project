@@ -236,13 +236,15 @@ class ValidationEngine():
                     
     #     schema.schemas = {k: v for k, v in schema.schemas.items() if v is not None}
     
+
+    # return a status and a list of ValidationError
     def validate_value(self, schema_id, value):
         errors = []
         if schema_id == -1:
             return ValidationStatus.VALID, errors
         if schema_id == -2:
             # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
-            return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, f'unexpected value or object: {value}')]
+            return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, {'value': value})]
         
         current_schema = self.get_schema(schema_id)
         # print(f'{current_schema} with {value}')
@@ -251,9 +253,9 @@ class ValidationEngine():
             
             func = validator_storage.get(key)
             if not func:
-                errors.append(ValidationError(ErrorType.SCHEMA_ERROR, f'schema[{key}({param})] not found'))
+                errors.append(ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'}))
             elif not func(value, param):
-                errors.append(ValidationError(ErrorType.BAD_VALUE, f'value({value}) violates schema[{key}({param})]'))
+                errors.append(ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'}))
             # else:
             #     print(ValidationError(ErrorType.SUCCESS, f'value({value}) satisfies schema[{key}({param})]'))
                 
@@ -268,7 +270,7 @@ class ValidationEngine():
             return ValidationStatus.VALID, errors
         if schema_id == -2:
             # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
-            return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, f'unexpected array')]
+            return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, {})]
         
         current_schema = self.get_schema(schema_id)
        
@@ -284,9 +286,9 @@ class ValidationEngine():
             # if func: print(f'found array validator for {key}, {param}: {children}')
             if not func:
                 if key in ignored_keywords: continue
-                errors.append(ValidationError(ErrorType.SCHEMA_ERROR, f'schema[{key}({param})] not found'))
+                errors.append(ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'}))
             elif not func(children, param):
-                errors.append(ValidationError(ErrorType.BAD_VALUE, f'the children violates schema[{key}({param})]'))
+                errors.append(ValidationError(ErrorType.BAD_VALUE, {'value': children, 'rule': f'{key}({param})'}))
 
         if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
             return ValidationStatus.INVALID, errors
@@ -336,7 +338,7 @@ class ValidationEngine():
         
         for key, value in children_states.items():
             if not value:
-                errors.append(ValidationError(ErrorType.INCOMPLETE, f'child({key}) is not valid'))
+                errors.append(ValidationError(ErrorType.INCOMPLETE, {'value': key}))
         if len(errors) > 0:   
             return ValidationStatus.INVALID, errors
             
@@ -348,11 +350,8 @@ class ValidationEngine():
             return ValidationStatus.VALID, errors
         for key, state in children_states.items():
             if not state:
-                errors.append(ValidationError(ErrorType.INCOMPLETE, f'value {key} not valid'))
+                errors.append(ValidationError(ErrorType.INCOMPLETE, {'value': key}))
 
         if len(errors) > 0:   
             return ValidationStatus.INVALID, errors
         return ValidationStatus.VALID, errors
-
-if __name__ == "__main__":
-    pass

@@ -3,7 +3,7 @@ from token_gen import token_stream
 from validators import ValidationStatus, ValidationEngine
 from constants import NodeType, schema_file, ValidationError, ErrorType, dent
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
-from constants import get_fingerprint_obj, get_fingerprint_arr
+from constants import get_fingerprint_obj, get_fingerprint_arr, LogMessage, ValidationLog
 
 
 from pathlib import Path
@@ -127,8 +127,7 @@ class Node:
 class Engine():
     def __init__(self, schema=None, target=None, max_depth=None, log_file_name=None):
         # set up logging
-        self.logs = []
-        self.log_target = log_file_name if log_file_name else None
+        self.logs = ValidationLog(log_file_name)
             
         # set up stack
         self.stack = [Node('root')] # adding a dummy node to eliminate the need of boundary checking
@@ -183,28 +182,22 @@ class Engine():
         # print(f'pop: {node}')
         # print(f'pop: {self.current_node.get_path()}')
         if not node.is_valid():
-            self.logs.append(f'- invalid json item: path({node.get_path()})')
-            self.logs.append(f'{dent}node info: {node.content()}')
-            for e in node.errors:
-                self.logs.append(f'{dent}{e}')
-            self.logs.append(f'-' * 120)
+            self.logs.add_log(LogMessage(node.errors, node.get_path(), node.content()))
+            
+            # self.logs.append(f'-' * 120)
 
         return node
     
     def force_pop(self):
         if len(self.stack) == 1:
             raise ValueError('cannot pop the root node')
-        unclose_error = ValidationError(ErrorType.UNCLOSED, 'unclosed structure')
-        self.logs.append(f'Validation incomplete: unclosed structure')
+        unclose_error = ValidationError(ErrorType.UNCLOSED)
         while(len(self.stack) > 1):
             node = self.stack.pop()
-            # print(f'force pop: {node}')
-            self.logs.append(f'- unclosed json item: path({node.get_path()})')
-            self.logs.append(f'{dent}node info: {node.content()}')
-            for e in node.errors:
-                self.logs.append(f'{dent}{e}')
-            self.logs.append(f'{dent}{unclose_error}')
-            self.logs.append('-' * 120)
+            node.errors.append(unclose_error)
+            
+            self.logs.add_log(LogMessage(node.errors, node.get_path(), node.content()))
+            # self.logs.append('-' * 120)
 
     def verify_node(self, node: Node):
         # print(f'verifying node: {node}')
@@ -237,9 +230,6 @@ class Engine():
         return node
             
     def run(self):
-        # clear the log file before writing
-        self.logs.append(f'--- Validation Error Log ---')
-        self.logs.append('-' * 120)
         pending_key = None
 
         try:
@@ -293,21 +283,13 @@ class Engine():
                 self.force_pop()
         
         except CircuitBreakerException as e:
-            self.logs.append(f"Circuit breaker activated: {e}")
+            self.logs.add_log(LogMessage(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 'circuit_breaker'))
             # print(self.stack[-1].get_path())
             
         finally:
+            return self.logs.report(self.circuit_breaker.max_recorded_depth)
             
-            self.logs.append(f'(maximum stack depth: {self.circuit_breaker.max_recorded_depth})')
-            self.logs.append('--- validation done ---')
-
-        if self.log_target:
-            with open(self.log_target, 'w') as f:
-                for log in self.logs:
-                    f.write(log + '\n')
-
         # print_schema_storage(self.schema_storage)
-        return self.logs
 
 if __name__ == '__main__':
     engine = Engine(schema=schema_file, target='data_unclosed_error.json', log_file_name='validation_log.txt', max_depth=10)
