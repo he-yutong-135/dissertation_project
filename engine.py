@@ -13,8 +13,8 @@ class Node:
     def __init__(self, key=None):
         self.key = key
         self.value = None # primitive only
-        self.state = ValidationStatus.VALID
-        self.complex_state = {}
+        self.state = ValidationStatus.VALID # stores the results of validation using necessary schemas
+        self.complex_states = {} # store the results of validation with multiple schemas
         self.errors = []
         self.parent = None
         self.type = NodeType.Object # OBJECT / ARRAY / VALUE
@@ -36,7 +36,6 @@ class Node:
             return False
         else:
             return all(self.children[k] == other.children[k] for k in self.children.keys())
-
 
     def is_valid(self):
         return self.state == ValidationStatus.VALID

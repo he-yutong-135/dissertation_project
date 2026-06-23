@@ -154,21 +154,11 @@ type_map = {
     "null": type(None)
 }
 
-WILDCARD = "*"
-
-error_buffer = []
-BATCH_SIZE = 10
-LOG_FILE = 'validation_log.txt'
-MAX_DEPTH = 10
-dent = '  '
-
-schema_file, data_file = 'schema.json', 'data.json'
-
 def get_fingerprint_obj(children: dict):
     if children is None:
         return hash(None)
     items = []
-    for k in sorted(children.keys()):
+    for k in sorted(children.keys()): # order does not affect equalization
         child = children[k] # child is guaranteed to be a primitive value
         items.append((k, child))
 
@@ -178,6 +168,16 @@ def get_fingerprint_arr(children: list):
     if children is None:
         return hash(None)
     return hash(tuple(children))
+
+WILDCARD = "*"
+
+error_buffer = []
+BATCH_SIZE = 10
+LOG_FILE = 'validation_log.txt'
+MAX_DEPTH = 10
+dent = '  '
+
+schema_file, data_file = 'schema.json', 'data.json'
 
 if __name__ == "__main__":
     pass

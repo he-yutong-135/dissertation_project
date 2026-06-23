@@ -2,22 +2,14 @@ from constants import ValidationStatus, type_map, ErrorType, ValidationError, No
 from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, SchemaNode
 import re
 
-def validate(value, schema_node, validator_storage):
-    for rule, param in schema_node.constraints.items():
-        func = validator_storage.get(rule)
-        if func:
-            func(value, param)
-        else:
-            raise ValueError(f"Unknown validation rule: {rule}")
-
 def validate_minimum(value, min_val):
-    if not is_number(value): return True
+    if not is_number(value): return True # does not apply to non-numeric value
     if float(value) < min_val:
         return False
     return True
 
 def validate_maximum(value, max_val):
-    if not is_number(value): return True
+    if not is_number(value): return True # does not apply to non-numeric value
     if float(value) > max_val:
         return False
     return True
@@ -63,14 +55,14 @@ def validate_types(value, types):
         return validate_type(value, types)
 
 def validate_multiple_of(value, multiple):
-    if not is_number(value): return True
+    if not is_number(value): return True # does not apply to non-numeric value
     # if not is_number(multiple): return False
     if float(value) % float(multiple) != 0:
         return False
     return True
 
 def validate_exclusive_maximum(value, exclusive_max):
-    if not is_number(value): return True
+    if not is_number(value): return True # does not apply to non-numeric value
     # if not is_number(exclusive_max): return False
     if float(value) >= exclusive_max:
         return False
@@ -89,18 +81,18 @@ def validate_validate_maximum_len(value, max_len):
     return True
 
 def validate_pattern(value, pattern):
-    if not isinstance(value, str): return True
+    if not isinstance(value, str): return True # only applies to string 
     # print(f'validating pattern: {pattern} with value: {value}')
     if not re.search(str(pattern), value):
         return False
     return True
 
 def validate_minItems(value: list, minNum):
-    if not isinstance(value, list): return True
+    if not isinstance(value, list): return True # only applies to lists
     return len(value) >= minNum
 
 def validate_maxItems(value: list, maxNum):
-    if not isinstance(value, list): return True
+    if not isinstance(value, list): return True # only applies to lists
     return len(value) <= maxNum
 
 def validate_unique_items(children, required):
@@ -126,6 +118,9 @@ def validate_required(children, required):
         
     return True
 
+def accept(value, param):
+    return True
+
 validator_storage = {
     "minimum": validate_minimum,
     "maximum": validate_maximum,
@@ -136,7 +131,13 @@ validator_storage = {
     "minLength": validate_validate_minimum_len,
     "maxLength": validate_validate_maximum_len,
     "pattern": validate_pattern,
-    "default": lambda value, default: True, # default does not affect validation result
+    "default": accept, # default does not affect validation result
+    "$schema": accept,
+    "$id": accept,
+    "$comment": accept,
+    "title": accept,
+    "description": accept,
+    "examples": accept,
 
     # array validators
     "uniqueItems": validate_unique_items,
@@ -149,8 +150,6 @@ validator_storage = {
 }
 
 ignored_keywords = ['items', 'contains', 'properties', 'additionalProperties']
-# array_children_schemas = ['minItems', 'maxItems']
-# object_children_schemas = ['properties', 'required']
 
 class ValidationEngine():
     def __init__(self, schema_storage):
@@ -176,7 +175,7 @@ class ValidationEngine():
 
         child_schema_id = None
 
-        # if parent_schema.schemas['type'] == "array":
+        # if parent node is an array
         if parentType is NodeType.Array:
             children_ref = parent_schema.schemas.get('items', None)
             
@@ -184,6 +183,7 @@ class ValidationEngine():
             # print(f'array schema: key: {key} -> child schema: {child_schema_id}')
             # return child_schema_id
 
+        # if parent node is an object
         elif parentType is NodeType.Object:
             # print(f'parent schema: {parent_schema}, key: {key}')
             children_ref = parent_schema.schemas.get('properties', None)
@@ -197,8 +197,9 @@ class ValidationEngine():
                     child_schema_id =  child_ref.value()
             
             # if no corresponding schema found
-            elif add_props: 
+            elif add_props: # additionalProperties allow the addition of extra node, always accept such nodes
                 return ACCEPT_NODE.id
+            # if additionalProperties corresponds to a schema, bind it to all child nodes
             elif isinstance(add_props, SchemaRef): child_schema_id = add_props.value()
             
         if child_schema_id is None:
