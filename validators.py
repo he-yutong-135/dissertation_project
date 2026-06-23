@@ -206,13 +206,23 @@ class ValidationEngine():
             # if the current node is either an object nor an array, it should not have a child node
             return REJECT_NODE.id
 
-        # if child_schema_id != REJECT_NODE.id and child_schema_id != ACCEPT_NODE.id:
-        #     self.update_schema(child_schema_id)
+        if child_schema_id != REJECT_NODE.id and child_schema_id != ACCEPT_NODE.id:
+            self.update_schema(child_schema_id)
         
         
         return child_schema_id
     
-    # def update_schema(self, schema_id):
+    def update_schema(self, schema_id):
+        schema = self.get_schema(schema_id)
+        
+        ref_path = schema.schemas.get('$ref', None)
+        if ref_path:
+            print(f'updating schema: {schema}')
+            def_schema = self.find_schema(ref_path)
+            schema.schemas['$ref'] = def_schema
+
+    def find_schema(self, path):
+        pass
     #     schema = self.get_schema(schema_id)
     #     # print(f'updating schema: {schema}')
     #     types = schema.schemas.get('type', None)
@@ -236,6 +246,24 @@ class ValidationEngine():
 
                     
     #     schema.schemas = {k: v for k, v in schema.schemas.items() if v is not None}
+
+    def validate_schema(self, schema_id, value):
+        if schema_id == -1:
+            return ValidationError.NO_ERROR
+        if schema_id == -2:
+            # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
+            return ValidationError(ErrorType.UNEXPECTED, {'value': value})
+        
+        errors = {}
+        current_schema = self.get_schema(schema_id)
+        for key, param in current_schema.schemas.items():
+            func = validator_storage.get(key)
+            if not func:
+                errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'})
+            elif not func(value, param):
+                errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
+
+        return errors
     
 
     # return a status and a list of ValidationError
@@ -260,7 +288,8 @@ class ValidationEngine():
             # else:
             #     print(ValidationError(ErrorType.SUCCESS, f'value({value}) satisfies schema[{key}({param})]'))
                 
-        if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
+        # if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
+        if len(errors) > 0:
             return ValidationStatus.INVALID, errors
         
         return ValidationStatus.VALID, errors
@@ -291,7 +320,8 @@ class ValidationEngine():
             elif not func(children, param):
                 errors.append(ValidationError(ErrorType.BAD_VALUE, {'value': children, 'rule': f'{key}({param})'}))
 
-        if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
+        # if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
+        if len(errors) > 0:
             return ValidationStatus.INVALID, errors
         
         return ValidationStatus.VALID, errors

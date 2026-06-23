@@ -32,7 +32,7 @@ class ErrorType(StrEnum):
     SCHEMA_ERROR = "<SCHEMA ERROR>",
     DEPTH_ERROR = "<DEPTH ERROR>",
     # for test
-    SUCCESS = "<SUCCESS>"
+    NO_ERROR = "<NO ERROR>"
 
 ERROR_TEMPLATES = {
     ErrorType.UNEXPECTED: {
@@ -63,22 +63,28 @@ ERROR_TEMPLATES = {
 
 class ValidationError():
     def __init__(self, error_type: ErrorType, context = {}):
+        # print('ValidationError created')
         self.error_type: ErrorType = error_type
-        # self.node_info =  node_info
-        # self.path = node_path
         self.context  = context
 
     def __str__(self):
         return self.__repr__()
     
     def __repr__(self):
+        if self.is_success(): return ''
         template = ERROR_TEMPLATES[self.error_type]["template"]
         return f'{self.error_type}: {template.format(**self.context)}'
     
+    def is_success(self):
+        return self.error_type is ErrorType.NO_ERROR
+    
     def __eq__(self, other):
         if isinstance(other, ValidationError):
+            
             if self.error_type == other.error_type and self.context == other.context:
                 return True
+            else:
+                print(f'error mismatch!: self: {repr(self.context)}, other: {repr(other.context)}')
             
         return False
     
@@ -87,10 +93,11 @@ def assert_single_log(logMessage, path, errors):
     assert logMessage.path == path, f'path mismatch: want: {path}, get: {logMessage.path}'
     assert len(logMessage.errors) == len(errors), f'not enough errors: want {len(errors)} errors, get {len(logMessage.errors)} errors'
     for i in range(len(errors)):
-        assert logMessage.errors[i] == errors[i], f'error mismatch, want: {errors[i]}, get: {logMessage.errors[i]}'
+        assert logMessage.errors[i] == errors[i], f'error mismatch, want: {repr(errors[i])}, get: {repr(logMessage.errors[i])}'
 
 
 def assert_all_logs(logs, error_dict: dict):
+    assert len(logs) == len(error_dict)
     for log in logs:
         path = log.path
 
@@ -98,10 +105,17 @@ def assert_all_logs(logs, error_dict: dict):
         assert target_errors is not None, f'extra errors added: {log.path}({log.errors})'
         assert_single_log(log, path, target_errors)
         
-    
+# store the errors of a single node
 class LogMessage():
     def __init__(self, errors, node_path = None, node_info = None):
-        self.errors = errors if isinstance(errors, list) else [errors]
+        
+        errors = errors if isinstance(errors, list) else [errors]
+        self.errors = []
+        # only preserve real errors
+        for error in errors:
+            if not error.is_success(): self.errors.append(error)
+        if len(self.errors) == 0: raise Exception('LogMessage expects nodes with errors')
+
         self.path = node_path
         self.info = node_info
 
