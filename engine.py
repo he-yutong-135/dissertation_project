@@ -1,6 +1,6 @@
 from schema_builder import build_schema, ACCEPT_NODE, print_schema_storage
 from token_gen import token_stream
-from validators import ValidationStatus, ValidationEngine
+from validators import ValidationStatus, ValidationEngine, ValidationResult
 from constants import NodeType, schema_file, ValidationError, ErrorType, dent
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
 from constants import get_fingerprint_obj, get_fingerprint_arr, LogMessage, ValidationLog
@@ -13,9 +13,9 @@ class Node:
     def __init__(self, key=None):
         self.key = key
         self.value = None # primitive only
-        self.state = ValidationStatus.VALID # stores the results of validation using necessary schemas
+        # self.state = ValidationStatus.VALID # stores the results of validation using necessary schemas
         self.complex_states = {} # store the results of validation with multiple schemas
-        self.errors = []
+        self.errors = ValidationResult()
         self.parent = None
         self.type = NodeType.Object # OBJECT / ARRAY / VALUE
         self.children = None # dict or list
@@ -38,7 +38,10 @@ class Node:
             return all(self.children[k] == other.children[k] for k in self.children.keys())
 
     def is_valid(self):
-        return self.state == ValidationStatus.VALID
+        return not bool(self.errors)
+    
+    def state(self):
+        return bool(self.errors)
     
     def content(self):
         if self.type == NodeType.Value:
@@ -71,7 +74,7 @@ class Node:
 
         schema = f'schema({self.schema_id})' 
         # errors = '' if len(self.errors) == 0 else '\n'.join(str(e) for e in self.errors)
-        return f'Node[{self.type}|{self.key} {value}] -> {schema} state({self.state})'
+        return f'Node[{self.type}|{self.key} {value}] -> {schema} state({self.state()})'
 
     def set_schema(self, id):
         self.schema_id = id
@@ -105,13 +108,14 @@ class Node:
         # self.children.pop(node.key)
         # if the node is of type Value, stores its value directly
         self.children[node.key] = node.value
+        # print(f'[{self}]remove child: {node.value}')
 
     def add_value(self, value):
         if self.type is NodeType.Value:
             self.set_value(value)
        
         else:
-            print(f'wrong type: {self.type}')
+            # print(f'wrong type: {self.type}')
             raise TypeError()
         
     def register_state(self, node):
@@ -120,8 +124,10 @@ class Node:
 
         if node.key not in self.children.keys():
             raise ValueError('wrong register: not a child of its parent')
+        
+        # print(f'register state: {node.state()}')
 
-        self.children_states[node.key] = node.state
+        self.children_states[node.key] = node.state()
 
 class Engine():
     def __init__(self, schema=None, target=None, max_depth=None, log_file_name=None):
@@ -180,7 +186,8 @@ class Engine():
         self.current_schema_id = node.parent.schema_id
         # print(f'pop: {node}')
         # print(f'pop: {self.current_node.get_path()}')
-        if not node.is_valid():
+        if node.state():
+            # print(node.errors)
             self.logs.add_log(LogMessage(node.errors, node.get_path(), node.content()))
             
             # self.logs.append(f'-' * 120)
@@ -193,29 +200,32 @@ class Engine():
         unclose_error = ValidationError(ErrorType.UNCLOSED)
         while(len(self.stack) > 1):
             node = self.stack.pop()
-            node.errors.append(unclose_error)
+            node.errors += unclose_error
+            # print(node.errors)
             
             self.logs.add_log(LogMessage(node.errors, node.get_path(), node.content()))
             # self.logs.append('-' * 120)
 
+
+    # should move this to node class
     def verify_node(self, node: Node):
         # print(f'verifying node: {node}')
         if node.type is NodeType.Value:
-            node.state, node.errors = self.validators.validate_value(node.schema_id, node.value)
+            node.errors = self.validators.validate_schema(node.schema_id, node.value)
+
 
         elif node.type is NodeType.Object:
-            self_state, self_errors = self.validators.validate_node(node.schema_id, node.children) # a dict 
-            children_state, children_errors = self.validators.validate_object_complete(node.schema_id, node.children_states)
-            node.errors = self_errors + children_errors
-            if len(node.errors) > 0:
-                node.state = ValidationStatus.INVALID
+            # print(f'validating object: {node.children}')
+            node.errors += self.validators.validate_schema(node.schema_id, node.children)
+            # print(node.children)
+            node.errors += self.validators.validate_completeness(node.children_states)
 
         elif node.type is NodeType.Array:
-            self_state, self_errors = self.validators.validate_node(node.schema_id, list(node.children.values())) # a list 
-            children_state, children_errors = self.validators.validate_array_complete(node.schema_id, node.children_states)
-            node.errors = self_errors + children_errors
-            if len(node.errors) > 0:
-                node.state = ValidationStatus.INVALID
+            # print(f'validating array: {node.children.values()}')
+            node.errors += self.validators.validate_schema(node.schema_id, list(node.children.values()))
+            node.errors += self.validators.validate_completeness(node.children_states)
+
+        # print(f'verify node" {node.errors}')
 
     def create_new_node(self, type, key=None):
         node = Node(key)

@@ -32,6 +32,8 @@ class SchemaRef:
     def __repr__(self):
         return f"ref({self.schema_id})"
 
+def is_schema_ref(ref):
+    return isinstance(ref, SchemaRef)
 
 def new_node():
     node = SchemaNode()

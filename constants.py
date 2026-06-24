@@ -71,12 +71,14 @@ class ValidationError():
         return self.__repr__()
     
     def __repr__(self):
-        if self.is_success(): return ''
+        # if no error
+        if not bool(self): return ''
         template = ERROR_TEMPLATES[self.error_type]["template"]
         return f'{self.error_type}: {template.format(**self.context)}'
     
-    def is_success(self):
-        return self.error_type is ErrorType.NO_ERROR
+    def __bool__(self):
+        # return true if there is an error
+        return self.error_type is not ErrorType.NO_ERROR
     
     def __eq__(self, other):
         if isinstance(other, ValidationError):
@@ -87,6 +89,42 @@ class ValidationError():
                 print(f'error mismatch!: self: {repr(self.context)}, other: {repr(other.context)}')
             
         return False
+    
+class ValidationResult():
+    def __init__(self, errors=None, node_path = None, node_info = None):
+        self.errors = []
+        self.path = node_path
+        self.info = node_info
+
+        if isinstance(errors, ValidationError):
+            self.errors.append(errors)
+        elif isinstance(errors, list):
+            self.errors = errors
+
+    def add(self, other):
+        if isinstance(other, ValidationError):
+            self.errors.append(other)
+        elif isinstance(other, ValidationResult):
+            self.errors.extend(other.errors)
+        return self
+    
+    def __iadd__(self, other):
+        self.add(other)
+        return self
+
+    def __bool__(self):
+        return any(self.errors)
+    
+    def __str__(self):
+        error_log = ''
+        for e in self.errors:
+            error_log += f'{dent}{dent}{str(e)}\n'
+        return error_log
+    
+    def state(self):
+        if self: return 'invalid'
+        else: return 'valid'
+    
     
 def assert_single_log(logMessage, path, errors):
     errors = errors if isinstance(errors, list) else [errors]
@@ -108,12 +146,14 @@ def assert_all_logs(logs, error_dict: dict):
 # store the errors of a single node
 class LogMessage():
     def __init__(self, errors, node_path = None, node_info = None):
+        if isinstance(errors, ValidationResult):
+            errors = errors.errors
         
         errors = errors if isinstance(errors, list) else [errors]
         self.errors = []
         # only preserve real errors
         for error in errors:
-            if not error.is_success(): self.errors.append(error)
+            if error: self.errors.append(error)
         if len(self.errors) == 0: raise Exception('LogMessage expects nodes with errors')
 
         self.path = node_path

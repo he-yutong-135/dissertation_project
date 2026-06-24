@@ -1,5 +1,5 @@
-from constants import ValidationStatus, type_map, ErrorType, ValidationError, NodeType
-from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, SchemaNode
+from constants import ValidationStatus, type_map, ErrorType, ValidationError, NodeType, ValidationResult
+from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, SchemaNode, is_schema_ref
 import re
 
 def validate_minimum(value, min_val):
@@ -149,13 +149,14 @@ validator_storage = {
     "required": validate_required
 }
 
-ignored_keywords = ['items', 'contains', 'properties', 'additionalProperties']
+ignored_keywords = ['items', 'contains', 'properties', 'additionalProperties', '$defs']
 
 class ValidationEngine():
     def __init__(self, schema_storage):
         self.schema_storage = schema_storage
 
     def get_schema(self, schema_id):
+        if isinstance(schema_id, SchemaRef): schema_id = schema_id.value()
         if 0 <= schema_id < len(self.schema_storage):
             return self.schema_storage[schema_id]
         elif schema_id ==  ACCEPT_NODE.id:
@@ -212,87 +213,101 @@ class ValidationEngine():
         
         return child_schema_id
     
+    # ref has to be parsed after all schema is parsed, thus I delay this functionality to schema binding stage
     def update_schema(self, schema_id):
         schema = self.get_schema(schema_id)
         
         ref_path = schema.schemas.get('$ref', None)
         if ref_path:
-            print(f'updating schema: {schema}')
+            # print(f'updating schema: {schema}')
             def_schema = self.find_schema(ref_path)
-            schema.schemas['$ref'] = def_schema
+            schema.schemas['$ref'] = SchemaRef(def_schema)
 
     def find_schema(self, path):
-        pass
-    #     schema = self.get_schema(schema_id)
-    #     # print(f'updating schema: {schema}')
-    #     types = schema.schemas.get('type', None)
-    #     # value node does not have complex validation rules
-    #     # if type == 'object' or type is None:
-    #     if not validate_types('array', types):
-    #         return
+        paths = path.split('/')
+        paths.reverse()
         
-    #     # if the schema is of type array, move its schema on children to the items schema
-    #     # if nodeType is NodeType.Array:
-    #     # if no items is found, create a new node for the extra schema
-    #     items_ref = schema.schemas.setdefault('items', extra_node(self.schema_storage))
-    #     if items_ref:
-    #         items_schema_id = items_ref.value()
-    #         items_schema = self.get_schema(items_schema_id)
-    #         # print(f"items_schema_id: {items_schema_id}")
-    #         for key, value in schema.schemas.items():
-    #             if key in array_children_schemas:
-    #                 items_schema.schemas[key] = value
-    #                 schema.schemas[key] = None
+        schema_idx = 0
+        while paths:
+            key = paths.pop()
 
-                    
-    #     schema.schemas = {k: v for k, v in schema.schemas.items() if v is not None}
+            if key == '#': 
+                schema_idx = 0
+                continue
+                 
+            schema_node = self.get_schema(schema_idx)
+            # print(key)
+            # print(schema_node)
 
+            next_ref = schema_node.schemas.get(key)
+            if next_ref is None:
+                return REJECT_NODE.id
+
+            schema_idx = next_ref.value()
+        return schema_idx
+                
     def validate_schema(self, schema_id, value):
+        # print(value)
         if schema_id == -1:
             return ValidationError.NO_ERROR
         if schema_id == -2:
-            # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
             return ValidationError(ErrorType.UNEXPECTED, {'value': value})
         
         errors = {}
         current_schema = self.get_schema(schema_id)
         for key, param in current_schema.schemas.items():
-            func = validator_storage.get(key)
-            if not func:
-                errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'})
-            elif not func(value, param):
-                errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
+            if key in ignored_keywords: continue
+            if is_schema_ref(param):
+                next_schema_id = param.value()
+                errors[key] = self.validate_schema(next_schema_id, value)
 
-        return errors
-    
+            elif isinstance(param, list) and is_schema_ref(param[0]):
+                errors[key] = []
+                for ref in param:
+                    next_schema_id = ref.value()
+                    errors[key].append(next_schema_id, value)
 
-    # return a status and a list of ValidationError
-    def validate_value(self, schema_id, value):
-        errors = []
-        if schema_id == -1:
-            return ValidationStatus.VALID, errors
-        if schema_id == -2:
-            # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
-            return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, {'value': value})]
-        
-        current_schema = self.get_schema(schema_id)
-        # print(f'{current_schema} with {value}')
-        for key, param in current_schema.schemas.items():
-            # print(f'validating {key} with {param}')
-            
-            func = validator_storage.get(key)
-            if not func:
-                errors.append(ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'}))
-            elif not func(value, param):
-                errors.append(ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'}))
-            # else:
-            #     print(ValidationError(ErrorType.SUCCESS, f'value({value}) satisfies schema[{key}({param})]'))
+            else:
                 
-        # if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
-        if len(errors) > 0:
-            return ValidationStatus.INVALID, errors
+                func = validator_storage.get(key)
+                # if func: print(f'found validator for {key}, {param}: {value}')
+
+                if not func:
+                    
+                    errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'})
+                elif not func(value, param):
+                    # print(f'validating {value}')
+                    errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
+                    # print(f'{errors[key]}')
+                else:
+                    errors[key] = ValidationError(ErrorType.NO_ERROR)
+
+
+        error = self.compress_errors(errors)
+        # if errors: print(f'after compressing: {error}')
+        return error
+    
+    
+    def compress_errors(self, errors):
+        # print(f'compressing errors: {errors}')
+        if isinstance(errors, ValidationResult): 
+            return errors
         
-        return ValidationStatus.VALID, errors
+        if isinstance(errors, ValidationError):
+            return ValidationResult(errors)
+
+        result = ValidationResult()
+        if isinstance(errors, list):
+            for item in errors:
+                result += self.compress_errors(item)
+            return result
+            
+        if isinstance(errors, dict):
+            for k, v in errors.items():
+                result += self.compress_errors(v)
+            return result
+
+        return result
     
     def validate_node(self, schema_id, children):
         errors = []
@@ -325,64 +340,15 @@ class ValidationEngine():
             return ValidationStatus.INVALID, errors
         
         return ValidationStatus.VALID, errors
-        
 
-    # def validate_object(self, schema_id, children):
-    #     errors = []
-    #     if schema_id == -1:
-    #         return ValidationStatus.VALID, errors
-    #     if schema_id == -2:
-    #         # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
-    #         return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, f'unexpected array')]
-        
-    #     current_schema = self.get_schema(schema_id)
-    #     # type check
-    #     # types = current_schema.schemas.get('type', None)
-    #     # print(f'object with types: {types}')
-    #     # if types and not validate_types('object', types): # type != 'object': 
-    #     #     return ValidationStatus.INVALID, [ValidationError(ErrorType.SCHEMA_ERROR, f'schema type mismatch: expected object but got {types}')]
-        
-    #     # ordinary schemas verification
-    #     # print(f'current_schema: {current_schema}')
-    #     for key, param in current_schema.schemas.items():
-    #         # print(f'before param: {param}')
             
-            
-    #         func = validator_storage.get(key, None)
-    #         # if func: print(f'found array validator for {key}, {param}: {children}')
-    #         if not func:
-    #             if key in ['properties', 'contains', 'type', 'additionalProperties']: continue
-    #             errors.append(ValidationError(ErrorType.SCHEMA_ERROR, f'schema[{key}({param})] not found'))
-    #         elif not func(children, param):
-    #             errors.append(ValidationError(ErrorType.BAD_VALUE, f'array with children({children}) violates schema[{key}({param})]'))
+    def validate_completeness(self, children_states):
 
-    #     if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
-    #         return ValidationStatus.INVALID, errors
-
-    #     return ValidationStatus.VALID, errors
-            
-    def validate_object_complete(self, schema_id, children_states):
-        errors = []
-            
-        if children_states is None:
-            return ValidationStatus.VALID, errors
-        
+        validationResult = ValidationResult()
+        if children_states is None: return validationResult
         for key, value in children_states.items():
-            if not value:
-                errors.append(ValidationError(ErrorType.INCOMPLETE, {'value': key}))
-        if len(errors) > 0:   
-            return ValidationStatus.INVALID, errors
-            
-        return ValidationStatus.VALID, errors
-    
-    def validate_array_complete(self, schema_id, children_states):
-        errors = []
-        if children_states is None:
-            return ValidationStatus.VALID, errors
-        for key, state in children_states.items():
-            if not state:
-                errors.append(ValidationError(ErrorType.INCOMPLETE, {'value': key}))
+            if bool(value): # child has an error
+                validationResult += ValidationError(ErrorType.INCOMPLETE, {'value': key})
 
-        if len(errors) > 0:   
-            return ValidationStatus.INVALID, errors
-        return ValidationStatus.VALID, errors
+        # print(f'validate_object_complete: {validationResult}')
+        return validationResult
