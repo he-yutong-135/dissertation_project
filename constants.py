@@ -1,4 +1,5 @@
 from enum import auto, StrEnum
+import copy
 
 class NodeType(StrEnum):
     Object = auto()
@@ -66,10 +67,10 @@ ERROR_TEMPLATES = {
 }
 
 class ValidationError():
-    def __init__(self, error_type: ErrorType, context = {}):
+    def __init__(self, error_type: ErrorType, context = None):
         # print('ValidationError created')
         self.error_type: ErrorType = error_type
-        self.context  = context
+        self.context = {} if context is None else context
 
     def __str__(self):
         return self.__repr__()
@@ -103,13 +104,13 @@ class ValidationResult():
         if isinstance(errors, ValidationError):
             self.errors.append(errors)
         elif isinstance(errors, list):
-            self.errors = errors
+            self.errors = errors.copy()
 
     def add(self, other):
-        if isinstance(other, ValidationError):
+        if isinstance(other, ValidationError) and other:
             self.errors.append(other)
         elif isinstance(other, ValidationResult):
-            self.errors.extend(other.errors)
+            self.errors.extend([e for e in other.errors if e])
         return self
     
     def add_info(self, node_path = None, node_info = None):
@@ -128,7 +129,7 @@ class ValidationResult():
     def __repr__(self):
         error_log = ''
         if self.path: error_log = f'invalid json item: path({self.path})\n'
-        if self.info: error_log += f'{dent}node info: {self.info}\n'
+        if self.info: error_log += f'{dent}node value: {self.info}\n'
         for e in self.errors:
             if e: error_log += f'{dent}{dent}{str(e)}\n'
         return error_log
@@ -141,22 +142,22 @@ class ValidationResult():
         else: return 'valid'
     
     
-# def assert_single_log(logMessage, path, errors):
-#     errors = errors if isinstance(errors, list) else [errors]
-#     assert logMessage.path == path, f'path mismatch: want: {path}, get: {logMessage.path}'
-#     assert len(logMessage.errors) == len(errors), f'not enough errors: want {len(errors)} errors, get {len(logMessage.errors)} errors'
-#     for i in range(len(errors)):
-#         assert logMessage.errors[i] == errors[i], f'error mismatch, want: {repr(errors[i])}, get: {repr(logMessage.errors[i])}'
+def assert_single_log(validationResult, path, errors):
+    errors = errors if isinstance(errors, list) else [errors]
+    assert validationResult.path == path, f'path mismatch: want: {path}, get: {validationResult.path}'
+    assert len(validationResult.errors) == len(errors), f'not enough errors: want {len(errors)} errors, get {len(validationResult.errors)} errors'
+    for i in range(len(errors)):
+        assert validationResult.errors[i] == errors[i], f'error mismatch, want: {repr(errors[i])}, get: {repr(validationResult.errors[i])}'
 
 
-# def assert_all_logs(logs, error_dict: dict):
-#     assert len(logs) == len(error_dict)
-#     for log in logs:
-#         path = log.path
+def assert_all_logs(logs, error_dict: dict):
+    assert len(logs) == len(error_dict)
+    for log in logs:
+        path = log.path
 
-#         target_errors = error_dict.get(path, None)
-#         assert target_errors is not None, f'extra errors added: {log.path}({log.errors})'
-#         assert_single_log(log, path, target_errors)
+        target_errors = error_dict.get(path, None)
+        assert target_errors is not None, f'extra errors added: {log.path}({log.errors})'
+        assert_single_log(log, path, target_errors)
     
 class ValidationLog():
     def __init__(self, log_file = None):
@@ -167,9 +168,13 @@ class ValidationLog():
         self.log_print.append('--- Validation Error Log ---\n')
 
     def add_log(self, errors, path=None, info=None):
+        # print(f'add log to logs: {errors}')
+        
         if isinstance(errors, ValidationError): errors = ValidationResult(errors)
-        self._logs.append(errors.add_info(path, info))
+        errors.add_info(path, info)
+        self._logs.append(copy.deepcopy(errors))
         self.log_print.append(str(errors))
+        # print(f'log added: {self._logs}')
 
     # def add_log_message(self, log):
     #     self._logs.append(log)

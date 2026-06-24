@@ -1,6 +1,6 @@
 from schema_builder import build_schema, ACCEPT_NODE, print_schema_storage
 from token_gen import token_stream
-from validators import ValidationStatus, ValidationEngine, ValidationResult
+from validators import ValidationEngine, ValidationResult
 from constants import NodeType, schema_file, ValidationError, ErrorType, dent
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
 from constants import get_fingerprint_obj, get_fingerprint_arr, ValidationLog
@@ -37,9 +37,6 @@ class Node:
         else:
             return all(self.children[k] == other.children[k] for k in self.children.keys())
 
-    def is_valid(self):
-        return not bool(self.errors)
-    
     def state(self):
         return bool(self.errors)
     
@@ -47,11 +44,13 @@ class Node:
         if self.type == NodeType.Value:
             return self.value
         else:
+            # return self.children_states
             invalid = [
-                k for k, v in self.children_states.items()
+                str(k) for k, v in self.children_states.items()
                 if v # True means there is an error
             ]
-            return f"failed children: {', '.join(invalid)}"
+            if len(invalid) > 0: 
+                return f"failed children: {', '.join(invalid)}"
         
     def get_path(self):
         parts = []
@@ -84,9 +83,6 @@ class Node:
         self.schema_id = id
 
     def set_value(self, value):
-        # if self.type != "value":
-        #     raise TypeError()
-
         self.value = value
 
     def add_child(self, node):
@@ -163,21 +159,19 @@ class Engine():
 
         self.current_node = node
         self.current_schema_id = node.schema_id
-        # print(f'push: {node}, schema_id: {schema_id}, parent type: {node.parent.type}, node type: {node.type}')
-        # print(f'push: {self.current_node.get_path()}')
+        print(f'push: {node}, schema_id: {schema_id}, parent type: {node.parent.type}, node type: {node.type}')
+        print(f'push: {self.current_node.get_path()}')
         self.stack.append(node)
         self.circuit_breaker.on_push()
 
     def pop(self):
         node = self.stack.pop()
         self.circuit_breaker.on_pop()
-        # if node.type is not NodeType.Value:
-        #     print(f'pop: {node.children}')
-
-
         if node.parent is None:
             raise ValueError('standalone node')
         
+        print('----------------')
+        print(f'pop node: {node}')
         self.verify_node(node)
 
         # after verifying the node, register its state to the parent node
@@ -188,14 +182,14 @@ class Engine():
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
         self.current_schema_id = node.parent.schema_id
-        # print(f'pop: {node}')
+        print(f'pop: {node.errors}')
         # print(f'pop: {self.current_node.get_path()}')
         if node.state():
-            # print(node.errors)
+            # print(f'pop: {node.get_path()} -> {node.errors}({type(node.errors)})')
+            # print(f'start to add log: {node.get_path()} {node.content()}')
             self.logs.add_log(node.errors, node.get_path(), node.content())
+            # print(self.logs._logs)
             
-            # self.logs.append(f'-' * 120)
-
         return node
     
     def force_pop(self):
@@ -208,12 +202,10 @@ class Engine():
             # print(node.errors)
             
             self.logs.add_log(node.errors, node.get_path(), node.content())
-            # self.logs.append('-' * 120)
-
 
     # should move this to node class
     def verify_node(self, node: Node):
-        # print(f'verifying node: {node}')
+        
         if node.type is NodeType.Value:
             node.errors = self.validators.validate_schema(node.schema_id, node.value)
 
@@ -229,7 +221,7 @@ class Engine():
             node.errors += self.validators.validate_schema(node.schema_id, list(node.children.values()))
             node.errors += self.validators.validate_completeness(node.children_states)
 
-        # print(f'verify node" {node.errors}')
+        # print(f'verify node" {node.get_path()} -> {node.errors}')
 
     def create_new_node(self, type, key=None):
         node = Node(key)

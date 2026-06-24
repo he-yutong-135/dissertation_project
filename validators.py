@@ -172,7 +172,6 @@ class ValidationEngine():
             return REJECT_NODE.id
         
         parent_schema = self.get_schema(schema_id)
-        # print(f'parent schema: {parent_schema} of {parentType}')
 
         child_schema_id = None
 
@@ -181,7 +180,6 @@ class ValidationEngine():
             children_ref = parent_schema.schemas.get('items', None)
             
             child_schema_id = children_ref.value() if children_ref else ACCEPT_NODE.id
-            # print(f'array schema: key: {key} -> child schema: {child_schema_id}')
             # return child_schema_id
 
         # if parent node is an object
@@ -247,16 +245,20 @@ class ValidationEngine():
         return schema_idx
                 
     def validate_schema(self, schema_id, value):
-        # print(value)
+        print(f'validate_schema: {value} with schema id: {schema_id}')
         if schema_id == -1:
-            return ValidationError.NO_ERROR
+            return ValidationError(ErrorType.NO_ERROR)
         if schema_id == -2:
             return ValidationError(ErrorType.UNEXPECTED, {'value': value})
         
         errors = {}
         current_schema = self.get_schema(schema_id)
         for key, param in current_schema.schemas.items():
+            # print(f'validating: key :{key}, value{param}')
             if key in ignored_keywords: continue
+            if key == 'dependentRequired': 
+                param = param.follow().content()
+
             if is_schema_ref(param):
                 next_schema_id = param.value()
                 errors[key] = self.validate_schema(next_schema_id, value)
@@ -269,7 +271,7 @@ class ValidationEngine():
 
             else:
                 func = validator_storage.get(key)
-                # if func: print(f'found validator for {key}, {param}: {value}')
+                # print(f'finding validator for {key}, {param}: {value}')
                 if not func:
                     errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'})
                 elif not func(value, param):
@@ -285,7 +287,7 @@ class ValidationEngine():
         return error
     
     def compress_errors(self, errors):
-        # print(f'compressing errors: {errors}')
+        print(f'compressing errors: {errors}')
         if isinstance(errors, ValidationResult): 
             return errors
         
@@ -294,13 +296,24 @@ class ValidationEngine():
 
         result = ValidationResult()
         if isinstance(errors, list):
+            result_lst = []
             for item in errors:
-                result += self.compress_errors(item)
-            return result
+                result_lst.append(self.compress_errors(item))
+
+            print(f'get a list of errors: {result_lst}')
+            return result_lst
             
         if isinstance(errors, dict):
             # here I can add logical combination check logic
             for k, v in errors.items():
+                if k == 'anyOf':
+                    
+                    res_lst = self.compress_errors(v)
+                    print(f'compress error: {res_lst}')
+                    for result in res_lst:
+                        if not result:
+                            return ValidationResult(ValidationError(ErrorType.NO_ERROR))
+
                 result += self.compress_errors(v)
             return result
 
@@ -312,7 +325,9 @@ class ValidationEngine():
         if children_states is None: return validationResult
         for key, value in children_states.items():
             if bool(value): # child has an error
+                # print(f'add incomplete error: {key}: {value}')
                 validationResult += ValidationError(ErrorType.INCOMPLETE, {'value': key})
+                # print(validationResult.errors)
 
         # print(f'validate_object_complete: {validationResult}')
         return validationResult
