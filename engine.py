@@ -3,7 +3,7 @@ from token_gen import token_stream
 from validators import ValidationStatus, ValidationEngine, ValidationResult
 from constants import NodeType, schema_file, ValidationError, ErrorType, dent
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
-from constants import get_fingerprint_obj, get_fingerprint_arr, LogMessage, ValidationLog
+from constants import get_fingerprint_obj, get_fingerprint_arr, ValidationLog
 
 
 from pathlib import Path
@@ -47,7 +47,11 @@ class Node:
         if self.type == NodeType.Value:
             return self.value
         else:
-            return self.children_states
+            invalid = [
+                k for k, v in self.children_states.items()
+                if v # True means there is an error
+            ]
+            return f"failed children: {', '.join(invalid)}"
         
     def get_path(self):
         parts = []
@@ -188,7 +192,7 @@ class Engine():
         # print(f'pop: {self.current_node.get_path()}')
         if node.state():
             # print(node.errors)
-            self.logs.add_log(LogMessage(node.errors, node.get_path(), node.content()))
+            self.logs.add_log(node.errors, node.get_path(), node.content())
             
             # self.logs.append(f'-' * 120)
 
@@ -203,7 +207,7 @@ class Engine():
             node.errors += unclose_error
             # print(node.errors)
             
-            self.logs.add_log(LogMessage(node.errors, node.get_path(), node.content()))
+            self.logs.add_log(node.errors, node.get_path(), node.content())
             # self.logs.append('-' * 120)
 
 
@@ -292,8 +296,8 @@ class Engine():
                 self.force_pop()
         
         except CircuitBreakerException as e:
-            self.logs.add_log(LogMessage(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 'circuit_breaker'))
-            # print(self.stack[-1].get_path())
+            self.logs.add_log(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
+                              'circuit_breaker')
             
         finally:
             return self.logs.report(self.circuit_breaker.max_recorded_depth)

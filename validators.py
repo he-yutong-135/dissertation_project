@@ -268,12 +268,9 @@ class ValidationEngine():
                     errors[key].append(next_schema_id, value)
 
             else:
-                
                 func = validator_storage.get(key)
                 # if func: print(f'found validator for {key}, {param}: {value}')
-
                 if not func:
-                    
                     errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'})
                 elif not func(value, param):
                     # print(f'validating {value}')
@@ -286,7 +283,6 @@ class ValidationEngine():
         error = self.compress_errors(errors)
         # if errors: print(f'after compressing: {error}')
         return error
-    
     
     def compress_errors(self, errors):
         # print(f'compressing errors: {errors}')
@@ -303,45 +299,13 @@ class ValidationEngine():
             return result
             
         if isinstance(errors, dict):
+            # here I can add logical combination check logic
             for k, v in errors.items():
                 result += self.compress_errors(v)
             return result
 
         return result
-    
-    def validate_node(self, schema_id, children):
-        errors = []
-        if schema_id == -1:
-            return ValidationStatus.VALID, errors
-        if schema_id == -2:
-            # print(f'validate_value: {value} with schema_id: {schema_id} -> REJECT_NODE')
-            return ValidationStatus.INVALID, [ValidationError(ErrorType.UNEXPECTED, {})]
-        
-        current_schema = self.get_schema(schema_id)
-       
-        # verification
-        for key, param in current_schema.schemas.items():
-            while isinstance(param, SchemaRef):
-                param = param.follow()
 
-            # print(f'param: {param}')
-            if isinstance(param, SchemaNode): param = param.content()
-            
-            func = validator_storage.get(key, None)
-            # if func: print(f'found array validator for {key}, {param}: {children}')
-            if not func:
-                if key in ignored_keywords: continue
-                errors.append(ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'}))
-            elif not func(children, param):
-                errors.append(ValidationError(ErrorType.BAD_VALUE, {'value': children, 'rule': f'{key}({param})'}))
-
-        # if len([error for error in errors if error.error_type != ErrorType.SUCCESS]) > 0:
-        if len(errors) > 0:
-            return ValidationStatus.INVALID, errors
-        
-        return ValidationStatus.VALID, errors
-
-            
     def validate_completeness(self, children_states):
 
         validationResult = ValidationResult()

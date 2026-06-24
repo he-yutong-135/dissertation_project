@@ -58,6 +58,10 @@ ERROR_TEMPLATES = {
     ErrorType.DEPTH_ERROR: {
         "template": "maximum allowed depth exceeded: {depth}",
         "keywords": ["depth"]
+    },
+    ErrorType.NO_ERROR: {
+        "template": "valid",
+        "keywords": []
     }
 }
 
@@ -72,7 +76,7 @@ class ValidationError():
     
     def __repr__(self):
         # if no error
-        if not bool(self): return ''
+        # if not bool(self): return ''
         template = ERROR_TEMPLATES[self.error_type]["template"]
         return f'{self.error_type}: {template.format(**self.context)}'
     
@@ -92,7 +96,7 @@ class ValidationError():
     
 class ValidationResult():
     def __init__(self, errors=None, node_path = None, node_info = None):
-        self.errors = []
+        self.errors = [] # stores a list of validation errors
         self.path = node_path
         self.info = node_info
 
@@ -108,6 +112,12 @@ class ValidationResult():
             self.errors.extend(other.errors)
         return self
     
+    def add_info(self, node_path = None, node_info = None):
+        self.path = node_path
+        self.info = node_info
+        # print(f'create validation result: {self.errors}')
+        return self
+    
     def __iadd__(self, other):
         self.add(other)
         return self
@@ -115,61 +125,38 @@ class ValidationResult():
     def __bool__(self):
         return any(self.errors)
     
-    def __str__(self):
+    def __repr__(self):
         error_log = ''
+        if self.path: error_log = f'invalid json item: path({self.path})\n'
+        if self.info: error_log += f'{dent}node info: {self.info}\n'
         for e in self.errors:
-            error_log += f'{dent}{dent}{str(e)}\n'
+            if e: error_log += f'{dent}{dent}{str(e)}\n'
         return error_log
+    
+    def __str__(self):
+       return self.__repr__()
     
     def state(self):
         if self: return 'invalid'
         else: return 'valid'
     
     
-def assert_single_log(logMessage, path, errors):
-    errors = errors if isinstance(errors, list) else [errors]
-    assert logMessage.path == path, f'path mismatch: want: {path}, get: {logMessage.path}'
-    assert len(logMessage.errors) == len(errors), f'not enough errors: want {len(errors)} errors, get {len(logMessage.errors)} errors'
-    for i in range(len(errors)):
-        assert logMessage.errors[i] == errors[i], f'error mismatch, want: {repr(errors[i])}, get: {repr(logMessage.errors[i])}'
+# def assert_single_log(logMessage, path, errors):
+#     errors = errors if isinstance(errors, list) else [errors]
+#     assert logMessage.path == path, f'path mismatch: want: {path}, get: {logMessage.path}'
+#     assert len(logMessage.errors) == len(errors), f'not enough errors: want {len(errors)} errors, get {len(logMessage.errors)} errors'
+#     for i in range(len(errors)):
+#         assert logMessage.errors[i] == errors[i], f'error mismatch, want: {repr(errors[i])}, get: {repr(logMessage.errors[i])}'
 
 
-def assert_all_logs(logs, error_dict: dict):
-    assert len(logs) == len(error_dict)
-    for log in logs:
-        path = log.path
+# def assert_all_logs(logs, error_dict: dict):
+#     assert len(logs) == len(error_dict)
+#     for log in logs:
+#         path = log.path
 
-        target_errors = error_dict.get(path, None)
-        assert target_errors is not None, f'extra errors added: {log.path}({log.errors})'
-        assert_single_log(log, path, target_errors)
-        
-# store the errors of a single node
-class LogMessage():
-    def __init__(self, errors, node_path = None, node_info = None):
-        if isinstance(errors, ValidationResult):
-            errors = errors.errors
-        
-        errors = errors if isinstance(errors, list) else [errors]
-        self.errors = []
-        # only preserve real errors
-        for error in errors:
-            if error: self.errors.append(error)
-        if len(self.errors) == 0: raise Exception('LogMessage expects nodes with errors')
-
-        self.path = node_path
-        self.info = node_info
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        log_message = ''
-        if self.path: log_message = f'invalid json item: path({self.path})\n'
-        if self.info: log_message += f'{dent}node info: {self.info}\n'
-        for e in self.errors:
-            log_message += f'{dent}{dent}{e}\n'
-        # log_message += f'{dent}{dent}{self.error}\n'
-        return log_message
+#         target_errors = error_dict.get(path, None)
+#         assert target_errors is not None, f'extra errors added: {log.path}({log.errors})'
+#         assert_single_log(log, path, target_errors)
     
 class ValidationLog():
     def __init__(self, log_file = None):
@@ -179,9 +166,10 @@ class ValidationLog():
         # start logging
         self.log_print.append('--- Validation Error Log ---\n')
 
-    def add_log(self, logMessage: LogMessage):
-        self._logs.append(logMessage)
-        self.log_print.append(str(logMessage))
+    def add_log(self, errors, path=None, info=None):
+        if isinstance(errors, ValidationError): errors = ValidationResult(errors)
+        self._logs.append(errors.add_info(path, info))
+        self.log_print.append(str(errors))
 
     # def add_log_message(self, log):
     #     self._logs.append(log)
