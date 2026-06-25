@@ -32,6 +32,7 @@ class ErrorType(StrEnum):
     UNCLOSED = "<UNCLOSED>"
     SCHEMA_ERROR = "<SCHEMA ERROR>",
     DEPTH_ERROR = "<DEPTH ERROR>",
+    COMPOSITION_ERROR = "<COMPOSITION ERROR>"
     # for test
     NO_ERROR = "<NO ERROR>"
 
@@ -59,6 +60,10 @@ ERROR_TEMPLATES = {
     ErrorType.DEPTH_ERROR: {
         "template": "maximum allowed depth exceeded: {depth}",
         "keywords": ["depth"]
+    },
+    ErrorType.COMPOSITION_ERROR: {
+        "template": "violates composite schema[{rule}], branch states: [{states}]",
+        "keywords": ["rule", "states"]
     },
     ErrorType.NO_ERROR: {
         "template": "valid",
@@ -107,7 +112,10 @@ class ValidationResult():
             self.errors = errors.copy()
 
     def add(self, other):
-        if isinstance(other, ValidationError) and other:
+        if isinstance(other, list):
+            for result in other:
+                self.add(result) 
+        elif isinstance(other, ValidationError) and other:
             self.errors.append(other)
         elif isinstance(other, ValidationResult):
             self.errors.extend([e for e in other.errors if e])
