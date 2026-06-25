@@ -149,18 +149,35 @@ validator_storage = {
     "required": validate_required
 }
 
-ignored_keywords = ['items', 'contains', 'properties', 'additionalProperties', '$defs']
+ignored_keywords = ['items', 'contains', 'properties', 'additionalProperties', '$defs'] # , 'if', 'then', 'else']
 def validate_anyOf(res_lst: list):
-    pass
+    for res in res_lst:
+        if not res: # if one branch is valid
+            return True
+        
+    return False
 
 def validate_allOf(res_lst: list):
-    pass
+    for res in res_lst:
+        if res: # if one branch is invalid
+            return False
+        
+    return True
 
 def validate_oneOf(res_lst: list):
-    pass
+    cnt = 0
+    for res in res_lst:
+        if not res: cnt += 1 # count the number of valid branches
+    if cnt == 1:
+        return True
+    else:
+        return False
 
-def validate_not(res_lst: ValidationResult):
-    pass
+def validate_not(res: ValidationResult):
+    if not res: # no error -> return an error
+        return False # invalid
+    else:
+        return True # valid, pass
 
 # composition handlers
 composition_validators = {
@@ -170,6 +187,20 @@ composition_validators = {
     "not": validate_not,
 
 }
+
+def validate_if_then_else(errors: dict):
+    # default to be False, which means no error
+    if_value = errors.get('if', False)
+    then_value = errors.get('then', False)
+    else_value = errors.get('else', False)
+    
+    states = {'if': 'invalid' if if_value else 'valid',
+               'then': 'invalid' if then_value else 'valid', 
+               'else': 'invalid' if else_value else 'valid'}
+    if not if_value: # if no error
+        return not bool(then_value), states
+    if if_value:
+        return not bool(else_value), states
 
 class ValidationEngine():
     def __init__(self, schema_storage):
@@ -208,9 +239,9 @@ class ValidationEngine():
             children_ref = parent_schema.schemas.get('properties', None)
             add_props = parent_schema.schemas.get('additionalProperties', True)
             if children_ref and key in children_ref.follow().schemas.keys():
-                print(f'find child: {schema_id}, {key} -> {children_ref.follow().schemas[key]}')
+                # print(f'find child: {schema_id}, {key} -> {children_ref.follow().schemas[key]}')
                 child_ref = children_ref.follow().schemas.get(key, None)
-                print(f'find child ref: {key} -> {child_ref}')
+                # print(f'find child ref: {key} -> {child_ref}')
                 if child_ref:
                     # there is a schema with this key, return the id directly
                     child_schema_id =  child_ref.value()
@@ -265,7 +296,7 @@ class ValidationEngine():
         return schema_idx
                 
     def validate_schema(self, schema_id, value):
-        print(f'validate_schema: {value} with schema id: {schema_id}')
+        # print(f'validate_schema: {value} with schema id: {schema_id}')
         if schema_id == -1:
             return ValidationError(ErrorType.NO_ERROR)
         if schema_id == -2:
@@ -274,7 +305,7 @@ class ValidationEngine():
         errors = {}
         current_schema = self.get_schema(schema_id)
         for key, param in current_schema.schemas.items():
-            print(f'validating: key :{key}, value{param}')
+            # print(f'validating: key :{key}, value{param}')
             if key in ignored_keywords: continue
             if key == 'dependentRequired': 
                 param = param.follow().content()
@@ -294,61 +325,67 @@ class ValidationEngine():
 
             else:
                 func = validator_storage.get(key)
-                # print(f'finding validator for {key}, {param}: {value}')
                 if not func:
                     errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'})
                 elif not func(value, param):
-                    # print(f'validating {value}')
                     errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
-                    # print(f'{errors[key]}')
                 else:
                     errors[key] = ValidationError(ErrorType.NO_ERROR)
 
-        # print(errors)
 
 
         error = self.compress_errors(errors)
-        if errors: print(f'after compressing: {error}')
+        # if errors: print(f'after compressing: {error}')
         return error
     
     def compress_errors(self, errors):
-        # print(f'compressing errors: {errors}')
+        # print(f'new compressing errors: {errors}')
         if isinstance(errors, ValidationResult): 
             return errors
         
         if isinstance(errors, ValidationError):
             return ValidationResult(errors)
 
-        result = ValidationResult()
+        
         if isinstance(errors, list):
+            
             result_lst = []
             for item in errors:
                 result_lst.append(self.compress_errors(item))
 
-            # print(f'get a list of errors: {result_lst}')
             return result_lst
             
+        result = ValidationResult()
         if isinstance(errors, dict):
-            # here I can add logical combination check logic
+            # compress the value first
             for k, v in errors.items():
-                states = []
-                res_lst = self.compress_errors(v)
-                if k == 'anyOf':
-                    
-                    
-                    print(f'anyof: {res_lst}')
-                    for res in res_lst:
-                        if not res:
-                            return ValidationResult(ValidationError(ErrorType.NO_ERROR))
-                        # keep track of all errors
-                        states.append(res.state())
-                        
-                    # if none is valid
-                    return ValidationResult(ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": k, "states": ', '.join(states)}))
+                errors[k] = self.compress_errors(v)
+            
+
+            if 'if' in errors.keys():
+                res, states = validate_if_then_else(errors)
+                if not res:
+                    # result += ValidationResult(ValidationError(ErrorType.NO_ERROR))
+                # else:
+                    result += ValidationResult(ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": "if-then-else", "states": states}))
+
+            
+            for k, v in errors.items():
                 
+                if k in ['if', 'then', 'else']: continue # they are processed
+                res_lst = v if isinstance(v, list) else [v]
+                res_states = [res.state() for res in res_lst]
+                if k in composition_validators.keys():
+                    
+                    res = composition_validators.get(k)(res_lst)
+                    
+                    if res:
+                        result += ValidationResult(ValidationError(ErrorType.NO_ERROR))
+                    else:
+                        result += ValidationResult(ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": k, "states": ', '.join(res_states)}))
                 # if not of composition schema
                 else:
-                    result += self.compress_errors(v)
+                    result += v
 
             return result
 

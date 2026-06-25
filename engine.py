@@ -159,8 +159,8 @@ class Engine():
 
         self.current_node = node
         self.current_schema_id = node.schema_id
-        print(f'push: {node}, schema_id: {schema_id}, parent type: {node.parent.type}, node type: {node.type}')
-        print(f'push: {self.current_node.get_path()}')
+        # print(f'push: {node}, schema_id: {schema_id}, parent type: {node.parent.type}, node type: {node.type}')
+        # print(f'push: {self.current_node.get_path()}')
         self.stack.append(node)
         self.circuit_breaker.on_push()
 
@@ -170,8 +170,8 @@ class Engine():
         if node.parent is None:
             raise ValueError('standalone node')
         
-        print('----------------')
-        print(f'pop node: {node}')
+        # print('----------------')
+        # print(f'pop node: {node}')
         self.verify_node(node)
 
         # after verifying the node, register its state to the parent node
@@ -182,7 +182,7 @@ class Engine():
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
         self.current_schema_id = node.parent.schema_id
-        print(f'pop: {node.errors}')
+        # print(f'pop: {node.errors}')
         # print(f'pop: {self.current_node.get_path()}')
         if node.state():
             # print(f'pop: {node.get_path()} -> {node.errors}({type(node.errors)})')

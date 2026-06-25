@@ -90,6 +90,10 @@ class ValidationError():
         # return true if there is an error
         return self.error_type is not ErrorType.NO_ERROR
     
+    def state(self):
+        if self: return 'invalid'
+        else: return 'valid'
+
     def __eq__(self, other):
         if isinstance(other, ValidationError):
             
