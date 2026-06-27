@@ -54,8 +54,8 @@ ERROR_TEMPLATES = {
         "keywords": []
     },
     ErrorType.INCOMPLETE: {
-        "template": "child({value}) is not valid",
-        "keywords": ["value"]
+        "template": "schema id({schema_id}) is not valid",
+        "keywords": ["schema_id id"]
     },
     ErrorType.DEPTH_ERROR: {
         "template": "maximum allowed depth exceeded: {depth}",
@@ -105,10 +105,10 @@ class ValidationError():
         return False
     
 class ValidationResult():
-    def __init__(self, errors=None, node_path = None, node_info = None):
+    def __init__(self, errors=None, node_path = None, schema_id = None):
         self.errors = [] # stores a list of validation errors
         self.path = node_path
-        self.info = node_info
+        self.schema_id = schema_id
 
         if isinstance(errors, ValidationError):
             self.errors.append(errors)
@@ -119,15 +119,17 @@ class ValidationResult():
         if isinstance(other, list):
             for result in other:
                 self.add(result) 
-        elif isinstance(other, ValidationError) and other:
+        # elif isinstance(other, ValidationError) and other:
+        elif isinstance(other, ValidationError):
             self.errors.append(other)
         elif isinstance(other, ValidationResult):
-            self.errors.extend([e for e in other.errors if e])
+            # self.errors.extend([e for e in other.errors if e])
+            self.errors.extend(other.errors)
         return self
     
-    def add_info(self, node_path = None, node_info = None):
+    def add_info(self, node_path = None, schema_id = None):
         self.path = node_path
-        self.info = node_info
+        self.schema_id = schema_id
         # print(f'create validation result: {self.errors}')
         return self
     
@@ -136,14 +138,17 @@ class ValidationResult():
         return self
 
     def __bool__(self):
-        return any(self.errors)
+        return any(self.errors) # true if it contains an error
+    
+    def __len__(self):
+        return len(self.errors)
     
     def __repr__(self):
         error_log = ''
         if self.path: error_log = f'invalid json item: path({self.path})\n'
-        if self.info: error_log += f'{dent}node value: {self.info}\n'
+        if self.schema_id: error_log += f'{dent}schema id: {self.schema_id}\n'
         for e in self.errors:
-            if e: error_log += f'{dent}{dent}{str(e)}\n'
+            error_log += f'{dent}{dent}{str(e)}\n'
         return error_log
     
     def __str__(self):
@@ -184,7 +189,7 @@ class ValidationLog():
         
         if isinstance(errors, ValidationError): errors = ValidationResult(errors)
         errors.add_info(path, info)
-        self._logs.append(copy.deepcopy(errors))
+        self._logs.append(errors)
         self.log_print.append(str(errors))
         # print(f'log added: {self._logs}')
 
@@ -201,7 +206,7 @@ class ValidationLog():
                 for log in self.log_print:
                     f.write(log)
                     f.write('\n')
-        return self._logs
+        print(self._logs)
     
 type_map = {
     "string": str,

@@ -47,11 +47,11 @@ def to_primitive(token):
     return token.strip('"')
 
 ACCEPT_NODE = SchemaNode()
-ACCEPT_NODE.id = -1
+ACCEPT_NODE.id = SchemaRef(-1)
 ACCEPT_NODE_ID = ACCEPT_NODE.id
 
 REJECT_NODE = SchemaNode()
-REJECT_NODE.id = -2
+REJECT_NODE.id = SchemaRef(-2)
 REJECT_NODE_ID = REJECT_NODE.id
     
 

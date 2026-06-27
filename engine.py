@@ -1,4 +1,4 @@
-from schema_builder import build_schema, ACCEPT_NODE, print_schema_storage
+from schema_builder import build_schema, ACCEPT_NODE, print_schema_storage, SchemaRef
 from token_gen import token_stream
 from validators import ValidationEngine, ValidationResult
 from constants import NodeType, schema_file, ValidationError, ErrorType, dent
@@ -14,16 +14,21 @@ class Node:
         self.key = key
         self.value = None # primitive only
         # self.state = ValidationStatus.VALID # stores the results of validation using necessary schemas
-        self.complex_states = {} # store the results of validation with multiple schemas
+        
         self.errors = ValidationResult()
         self.parent = None
         self.type = NodeType.Object # OBJECT / ARRAY / VALUE
         self.children = None # dict or list
 
-        self.children_states = None # this records the validation status of each child node
-
         self.schema_id = 0
-        self.children_schema_id = None # this record the id of schemas for all children nodes
+
+        self.my_schema_id_lst = [SchemaRef(0)]
+        self.my_states = []
+
+        self.children_schema_id_lst = [SchemaRef(0)]
+        self.child_states = [[]] # stores the extra states from children, a list of a list of validationResult
+
+        # self.children_schema_id = None # this record the id of schemas for all children nodes
 
     def __eq__(self, other):
         if not isinstance(other, Node):
@@ -38,19 +43,14 @@ class Node:
             return all(self.children[k] == other.children[k] for k in self.children.keys())
 
     def state(self):
-        return bool(self.errors)
+        return bool(self.my_states)
     
     def content(self):
-        if self.type == NodeType.Value:
-            return self.value
-        else:
-            # return self.children_states
-            invalid = [
-                str(k) for k, v in self.children_states.items()
-                if v # True means there is an error
-            ]
-            if len(invalid) > 0: 
-                return f"failed children: {', '.join(invalid)}"
+        print(self.my_states)
+        for i in range(len(self.my_schema_id_lst)):
+            if len(self.my_states) > i and self.my_states[i]:
+                print(f'schema id: {self.my_schema_id_lst[i].value()}')
+                print(self.my_states[i])
         
     def get_path(self):
         parts = []
@@ -119,15 +119,18 @@ class Node:
             raise TypeError()
         
     def register_state(self, node):
-        if self.children_states is None:
-            self.children_states = {}
 
         if node.key not in self.children.keys():
             raise ValueError('wrong register: not a child of its parent')
         
-        # print(f'register state: {node.state()}')
-
-        self.children_states[node.key] = node.state()
+        # print(f'original child states: {self.child_states}')
+        # print(f'register my state: {node.my_states}')
+        
+        assert len(node.my_states) == len(self.child_states)
+        for i in range(len(node.my_states)):
+            self.child_states[i].append(node.my_states[i])
+        
+        # print(f'after registering state: {self.child_states}')
 
 class Engine():
     def __init__(self, schema=None, target=None, max_depth=None, log_file_name=None):
@@ -155,12 +158,21 @@ class Engine():
     def push(self, node):
         # bind the node with its schema
         schema_id = self.validators.find_child(self.current_schema_id, node.key, node.parent.type)
+
+        print(f'push: {node.get_path()}')
+        # print(f'node parent: {node.parent}')
+
+        node.my_schema_id_lst = self.validators.collect_schemas_for_me(node.parent.children_schema_id_lst, node.key)
+        node.children_schema_id_lst = self.validators.collect_schemas_for_children(node.my_schema_id_lst)
+
+        # multiple schemas
+        
+        node.child_states = [[] for _ in range(len(node.children_schema_id_lst))]
+
         node.schema_id = schema_id
 
         self.current_node = node
         self.current_schema_id = node.schema_id
-        # print(f'push: {node}, schema_id: {schema_id}, parent type: {node.parent.type}, node type: {node.type}')
-        # print(f'push: {self.current_node.get_path()}')
         self.stack.append(node)
         self.circuit_breaker.on_push()
 
@@ -170,8 +182,11 @@ class Engine():
         if node.parent is None:
             raise ValueError('standalone node')
         
+        
         # print('----------------')
         # print(f'pop node: {node}')
+        print(f'pop: {node.get_path()}')
+        print(f'my states: {node.my_states}')
         self.verify_node(node)
 
         # after verifying the node, register its state to the parent node
@@ -183,13 +198,11 @@ class Engine():
         self.current_node = node.parent
         self.current_schema_id = node.parent.schema_id
         # print(f'pop: {node.errors}')
-        # print(f'pop: {self.current_node.get_path()}')
-        if node.state():
-            # print(f'pop: {node.get_path()} -> {node.errors}({type(node.errors)})')
-            # print(f'start to add log: {node.get_path()} {node.content()}')
-            self.logs.add_log(node.errors, node.get_path(), node.content())
-            # print(self.logs._logs)
-            
+
+        for i in range(len(node.my_schema_id_lst)):
+            if node.my_states[i]:
+                self.logs.add_log(node.my_states[i], node.get_path(), node.my_schema_id_lst[i].value())
+        
         return node
     
     def force_pop(self):
@@ -206,20 +219,29 @@ class Engine():
     # should move this to node class
     def verify_node(self, node: Node):
         
+        print(f'my schema ids: {node.my_schema_id_lst}')
+        print(f'children schema_ids: {node.children_schema_id_lst}')
         if node.type is NodeType.Value:
-            node.errors = self.validators.validate_schema(node.schema_id, node.value)
+            # node.errors = self.validators.validate_schema(node.schema_id, node.value)
+            
+            for schema_id in node.my_schema_id_lst:
+                print(f'verifiy node: schema{schema_id}')
+                node.my_states.append(self.validators.validate_schema(schema_id, node.value))
+            # print(f'verifying: my states {node.my_states}')
 
 
         elif node.type is NodeType.Object:
-            # print(f'validating object: {node.children}')
-            node.errors += self.validators.validate_schema(node.schema_id, node.children)
-            # print(node.children)
-            node.errors += self.validators.validate_completeness(node.children_states)
+
+            for schema_id in node.my_schema_id_lst:
+                print(f'verifiy node: schema{schema_id}')
+                print(f'start verifying: {node.child_states}')
+                node.my_states.append(self.validators.validate_schema(schema_id, node.children, node.child_states))
 
         elif node.type is NodeType.Array:
-            # print(f'validating array: {node.children.values()}')
-            node.errors += self.validators.validate_schema(node.schema_id, list(node.children.values()))
-            node.errors += self.validators.validate_completeness(node.children_states)
+            for schema_id in node.my_schema_id_lst:
+                print(f'verifiy node: schema{schema_id}')
+                print(f'start verifying: {node.child_states}')
+                node.my_states.append(self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states))
 
         # print(f'verify node" {node.get_path()} -> {node.errors}')
 
@@ -290,9 +312,11 @@ class Engine():
         except CircuitBreakerException as e:
             self.logs.add_log(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
                               'circuit_breaker')
+        # except Exception as e:
+        #     print(f'error! {e}')
             
         finally:
-            return self.logs.report(self.circuit_breaker.max_recorded_depth)
+            self.logs.report(self.circuit_breaker.max_recorded_depth)
             
         # print_schema_storage(self.schema_storage)
 
