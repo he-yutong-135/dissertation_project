@@ -142,6 +142,7 @@ validator_storage = {
     "description": accept,
     "examples": accept,
     "additionalProperties": accept,
+    "$defs": accept,
 
     # array validators
     "uniqueItems": validate_unique_items,
@@ -153,9 +154,8 @@ validator_storage = {
     "required": validate_required
 }
 
-processed_keywords = ['items', 'contains', 'properties', 'additionalProperties', '$defs'] # , 'if', 'then', 'else']
 def validate_anyOf(res_lst: list):
-    print(f'validate any: {[bool(res) for res in res_lst]}')
+    # print(f'validate any: {[bool(res) for res in res_lst]}')
     for res in res_lst:
         if not res or res is None: # if one branch is valid
             return True
@@ -163,7 +163,7 @@ def validate_anyOf(res_lst: list):
     return False
 
 def validate_allOf(res_lst: list):
-    print(f'validate all: {[bool(res) for res in res_lst]}')
+    # print(f'validate all: {[bool(res) for res in res_lst]}')
     for res in res_lst:
         if res or  res is None: # if one branch is invalid
             return False
@@ -187,6 +187,13 @@ def validate_not(res: ValidationResult):
         return False # invalid
     else:
         return True # valid, pass
+    
+def validate_ref(res: ValidationResult):
+    # print(f'validate not: {bool(res)}')
+    if not res or  res is None: # no error
+        return True # valid
+    else:
+        return False # invalid
 
 # composition handlers
 composition_validators = {
@@ -194,9 +201,10 @@ composition_validators = {
     "allOf": validate_allOf,
     "oneOf": validate_oneOf,
     "not": validate_not,
+    "$ref": validate_ref
 }
 
-composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else"]
+composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref"]
 child_schema_keywords = ["properties", "items", "contains"]
 
 # def validate_all(state_list):
@@ -250,63 +258,14 @@ class ValidationEngine():
             return ACCEPT_NODE
         return REJECT_NODE
     
-    
-    def find_child(self, schema_id, key, parentType):
-        # if is permissive schema and no key provided -> the outermost object, returns the first schema id
-        # if key is provided -> inside a node with no constraints, return 
-        if schema_id == ACCEPT_NODE.id:
-            return 0 if key == 'top_object' else ACCEPT_NODE.id
-        if schema_id == REJECT_NODE.id:
-            return REJECT_NODE.id
-        
-        parent_schema = self.get_schema(schema_id)
-
-        child_schema_id = None
-
-        # if parent node is an array
-        if parentType is NodeType.Array:
-            children_ref = parent_schema.schemas.get('items', None)
-            
-            child_schema_id = children_ref.value() if children_ref else ACCEPT_NODE.id
-            # return child_schema_id
-
-        # if parent node is an object
-        elif parentType is NodeType.Object:
-            # print(f'parent schema: {parent_schema}, key: {key}')
-            children_ref = parent_schema.schemas.get('properties', None)
-            add_props = parent_schema.schemas.get('additionalProperties', True)
-            if children_ref and key in children_ref.follow().schemas.keys():
-                # print(f'find child: {schema_id}, {key} -> {children_ref.follow().schemas[key]}')
-                child_ref = children_ref.follow().schemas.get(key, None)
-                # print(f'find child ref: {key} -> {child_ref}')
-                if child_ref:
-                    # there is a schema with this key, return the id directly
-                    child_schema_id =  child_ref.value()
-            
-            # if no corresponding schema found
-            elif add_props: # additionalProperties allow the addition of extra node, always accept such nodes
-                return ACCEPT_NODE.id
-            # if additionalProperties corresponds to a schema, bind it to all child nodes
-            elif isinstance(add_props, SchemaRef): child_schema_id = add_props.value()
-            
-        if child_schema_id is None:
-            # if the current node is either an object nor an array, it should not have a child node
-            return REJECT_NODE.id
-
-        if child_schema_id != REJECT_NODE.id and child_schema_id != ACCEPT_NODE.id:
-            self.update_schema(child_schema_id)
-        
-        return child_schema_id
-    
     # ref has to be parsed after all schema is parsed, thus I delay this functionality to schema binding stage
-    def update_schema(self, schema_id):
-        schema = self.get_schema(schema_id)
-        
+    def update_schema(self, schema_ref):
+        schema = self.get_schema(schema_ref.value())
         ref_path = schema.schemas.get('$ref', None)
         if ref_path:
             def_schema = self.find_schema(ref_path)
             schema.schemas['$ref'] = def_schema
-            print(f'updating schema: $ref -> {def_schema}')
+            # print(f'updating schema: $ref -> {def_schema}')
 
     def find_schema(self, path):
         paths = path.split('/')
@@ -345,14 +304,13 @@ class ValidationEngine():
         # print(f'validating with {current_schema}')
         for key, param in current_schema.schemas.items():
             
-            
-
             if key in child_schema_keywords: 
-                print(f'all states: {children_state}, state idx: {idx.value()}')
-                # print(f'validating child_schema: key :{key}, param: {param}, children_state: {children_state[state_idx]}')
+                # print(f'all states: {children_state}, state idx: {idx.value()}')
+                
                 validationResult = ValidationResult()
                 # it consumes one schema result
                 child_validation_results = children_state[idx.value()] # a list
+                print(f'validating child_schema: key :{key}, param: {param}, children_state: {[bool(x) for x in child_validation_results]}')
                 idx.increase()
 
                 res = child_schema_validators.get(key)(child_validation_results)
@@ -370,7 +328,12 @@ class ValidationEngine():
             elif key == 'dependentRequired': 
                 param = param.follow().content()
 
-            elif is_schema_ref(param):
+            # elif key == '$ref':
+            #     next_schema_id = self.find_schema(param).value()
+            #     errors[key] = self.validate_schema(next_schema_id, value, children_state, idx)
+
+            elif is_schema_ref(param) and key != "$defs":
+                # print(f'found schema ref: key: {key}, value: {value}, param: {param}')
                 next_schema_id = param.value()
                 errors[key] = self.validate_schema(next_schema_id, value, children_state, idx)
 
@@ -396,7 +359,7 @@ class ValidationEngine():
                     errors[key] = ValidationError(ErrorType.NO_ERROR)
 
 
-        print(f'validation errors: {errors}')
+        # print(f'validation errors: {errors}')
         error = self.compress_errors(errors)
         # if errors: print(f'after compressing: {error}')
         return error
@@ -446,6 +409,7 @@ class ValidationEngine():
                 if k in composition_validators.keys():
                     
                     res = composition_validators.get(k)(v)
+                    # print(f'composition schema, key: {k}, value: {v}')
                     
                     if res:
                         result += ValidationResult(ValidationError(ErrorType.NO_ERROR))
@@ -484,7 +448,6 @@ class ValidationEngine():
                     if k == 'properties':
                         extra_schemas.append(v.follow().content()) # store a dict 
                         additional = schema.content().get('additionalProperties', True)
-                        print(f'additional: {additional}')
                         if isinstance(additional, bool):
                             if additional: 
                                 add_ref = ACCEPT_NODE.id
@@ -511,10 +474,14 @@ class ValidationEngine():
         # print(f'collect_schemas_for_me: {schema_lst}')
 
         for schema in schema_lst:
-            if isinstance(schema, SchemaRef): schema_ids.append(schema)
+            if isinstance(schema, SchemaRef): 
+                self.update_schema(schema)
+                schema_ids.append(schema)
             elif isinstance(schema, dict):
+                
                 schema_ref = schema.get(my_key, None)
                 if schema_ref:
+                    self.update_schema(schema_ref)
                     schema_ids.append(schema_ref)
                 else:
                     schema_ids.append(schema.get(None, REJECT_NODE.id))
@@ -522,8 +489,8 @@ class ValidationEngine():
                 raise Exception(f'unexpected schema lst provided: {schema_lst}')
             
         assert len(schema_lst) == len(schema_ids)
-        print(f'schema ids from parent: {schema_lst}')
-        print(f'my schema ids: {schema_ids}')
+        # print(f'schema ids from parent: {schema_lst}')
+        # print(f'my schema ids: {schema_ids}')
 
         return schema_ids
                 

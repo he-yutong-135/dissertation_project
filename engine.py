@@ -146,18 +146,9 @@ class Engine():
         self.circuit_breaker = CircuitBreaker(max_depth)
 
         self.current_node = self.stack[0]
-        self.current_schema_id = ACCEPT_NODE.id# self.schema_storage[0] # starting schema for outermost json object
-
-    def change_schema(self, file_name):
-        self.schema_storage = build_schema(file_name)
-        self.current_schema_id = ACCEPT_NODE.id
-
-    def change_target(self, file_name):
-        self.token_stream = token_stream(file_name)
 
     def push(self, node):
         # bind the node with its schema
-        schema_id = self.validators.find_child(self.current_schema_id, node.key, node.parent.type)
 
         print(f'push: {node.get_path()}')
         # print(f'node parent: {node.parent}')
@@ -169,10 +160,8 @@ class Engine():
         
         node.child_states = [[] for _ in range(len(node.children_schema_id_lst))]
 
-        node.schema_id = schema_id
 
         self.current_node = node
-        self.current_schema_id = node.schema_id
         self.stack.append(node)
         self.circuit_breaker.on_push()
 
@@ -186,7 +175,7 @@ class Engine():
         # print('----------------')
         # print(f'pop node: {node}')
         print(f'pop: {node.get_path()}')
-        print(f'my states: {node.my_states}')
+        # print(f'my content: {node.content()}')
         self.verify_node(node)
 
         # after verifying the node, register its state to the parent node
@@ -196,8 +185,6 @@ class Engine():
 
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
-        self.current_schema_id = node.parent.schema_id
-        # print(f'pop: {node.errors}')
 
         for i in range(len(node.my_schema_id_lst)):
             if node.my_states[i]:
@@ -219,13 +206,12 @@ class Engine():
     # should move this to node class
     def verify_node(self, node: Node):
         
-        print(f'my schema ids: {node.my_schema_id_lst}')
-        print(f'children schema_ids: {node.children_schema_id_lst}')
+        # print(f'my schema ids: {node.my_schema_id_lst}')
+        # print(f'children schema_ids: {node.children_schema_id_lst}')
         if node.type is NodeType.Value:
-            # node.errors = self.validators.validate_schema(node.schema_id, node.value)
             
             for schema_id in node.my_schema_id_lst:
-                print(f'verifiy node: schema{schema_id}')
+                # print(f'verifiy node: schema{schema_id}')
                 node.my_states.append(self.validators.validate_schema(schema_id, node.value))
             # print(f'verifying: my states {node.my_states}')
 
@@ -233,14 +219,14 @@ class Engine():
         elif node.type is NodeType.Object:
 
             for schema_id in node.my_schema_id_lst:
-                print(f'verifiy node: schema{schema_id}')
-                print(f'start verifying: {node.child_states}')
+                # print(f'verifiy node: schema{schema_id}')
+                # print(f'start verifying: {node.child_states}')
                 node.my_states.append(self.validators.validate_schema(schema_id, node.children, node.child_states))
 
         elif node.type is NodeType.Array:
             for schema_id in node.my_schema_id_lst:
-                print(f'verifiy node: schema{schema_id}')
-                print(f'start verifying: {node.child_states}')
+                # print(f'verifiy node: schema{schema_id}')
+                # print(f'start verifying: {node.child_states}')
                 node.my_states.append(self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states))
 
         # print(f'verify node" {node.get_path()} -> {node.errors}')
