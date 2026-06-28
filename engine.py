@@ -26,9 +26,7 @@ class Node:
         self.my_states = []
 
         self.children_schema_id_lst = [SchemaRef(0)]
-        self.child_states = [[]] # stores the extra states from children, a list of a list of validationResult
-
-        # self.children_schema_id = None # this record the id of schemas for all children nodes
+        self.child_states = [[]] # stores the extra states from children, a list validationResult
 
     def __eq__(self, other):
         if not isinstance(other, Node):
@@ -42,11 +40,8 @@ class Node:
         else:
             return all(self.children[k] == other.children[k] for k in self.children.keys())
 
-    def state(self):
-        return bool(self.my_states)
-    
     def content(self):
-        print(self.my_states)
+        # print(self.my_states)
         for i in range(len(self.my_schema_id_lst)):
             if len(self.my_states) > i and self.my_states[i]:
                 print(f'schema id: {self.my_schema_id_lst[i].value()}')
@@ -68,16 +63,15 @@ class Node:
     def __repr__(self):
         value = ''
         if self.type is NodeType.Value:
-            value = f': value({self.value})'
+            value = f'Value[{self.value}]'
         elif self.children is not None:
             if self.type is NodeType.Object:
-                value = f': children({self.children.keys()})'
+                value = f'Object[{', '.join(self.children.keys())}]'
             elif self.type is NodeType.Array:
-                value = f': array({self.children.items()})'
+                child_str = [str(x) for x in self.children.values()]
+                value = f'Array[{', '.join(child_str)}]'
 
-        schema = f'schema({self.schema_id})' 
-        # errors = '' if len(self.errors) == 0 else '\n'.join(str(e) for e in self.errors)
-        return f'Node[{self.type}|{self.key} {value}] -> {schema} state({self.state()})'
+        return f'{value}'
 
     def set_schema(self, id):
         self.schema_id = id
@@ -122,15 +116,9 @@ class Node:
 
         if node.key not in self.children.keys():
             raise ValueError('wrong register: not a child of its parent')
-        
-        # print(f'original child states: {self.child_states}')
-        # print(f'register my state: {node.my_states}')
-        
         assert len(node.my_states) == len(self.child_states)
         for i in range(len(node.my_states)):
             self.child_states[i].append(node.my_states[i])
-        
-        # print(f'after registering state: {self.child_states}')
 
 class Engine():
     def __init__(self, schema=None, target=None, max_depth=None, log_file_name=None):
@@ -150,7 +138,7 @@ class Engine():
     def push(self, node):
         # bind the node with its schema
 
-        print(f'push: {node.get_path()}')
+        # print(f'push: {node.get_path()}')
         # print(f'node parent: {node.parent}')
 
         node.my_schema_id_lst = self.validators.collect_schemas_for_me(node.parent.children_schema_id_lst, node.key)
@@ -170,11 +158,9 @@ class Engine():
         self.circuit_breaker.on_pop()
         if node.parent is None:
             raise ValueError('standalone node')
-        
-        
         # print('----------------')
         # print(f'pop node: {node}')
-        print(f'pop: {node.get_path()}')
+        # print(f'pop: {node.get_path()}')
         # print(f'my content: {node.content()}')
         self.verify_node(node)
 
@@ -188,48 +174,40 @@ class Engine():
 
         for i in range(len(node.my_schema_id_lst)):
             if node.my_states[i]:
-                self.logs.add_log(node.my_states[i], node.get_path(), node.my_schema_id_lst[i].value())
+                self.logs.add_log(node.my_states[i], node.get_path(), str(node))
         
         return node
     
     def force_pop(self):
         if len(self.stack) == 1:
             raise ValueError('cannot pop the root node')
-        unclose_error = ValidationError(ErrorType.UNCLOSED)
+        unclose_error = ValidationResult(ValidationError(ErrorType.UNCLOSED))
         while(len(self.stack) > 1):
             node = self.stack.pop()
-            node.errors += unclose_error
-            # print(node.errors)
-            
-            self.logs.add_log(node.errors, node.get_path(), node.content())
+            if len(node.my_states) == 0:
+                node.my_states.append(unclose_error)
+            else:
+                for s in node.my_states:
+                    s += unclose_error
 
-    # should move this to node class
+            for i in range(len(node.my_schema_id_lst)):
+                if node.my_states[i]:
+                    self.logs.add_log(node.my_states[i], node.get_path(), str(node))
+
+            node.parent.register_state(node)
+            
     def verify_node(self, node: Node):
-        
-        # print(f'my schema ids: {node.my_schema_id_lst}')
-        # print(f'children schema_ids: {node.children_schema_id_lst}')
         if node.type is NodeType.Value:
-            
             for schema_id in node.my_schema_id_lst:
-                # print(f'verifiy node: schema{schema_id}')
                 node.my_states.append(self.validators.validate_schema(schema_id, node.value))
-            # print(f'verifying: my states {node.my_states}')
-
 
         elif node.type is NodeType.Object:
-
             for schema_id in node.my_schema_id_lst:
-                # print(f'verifiy node: schema{schema_id}')
-                # print(f'start verifying: {node.child_states}')
                 node.my_states.append(self.validators.validate_schema(schema_id, node.children, node.child_states))
 
         elif node.type is NodeType.Array:
             for schema_id in node.my_schema_id_lst:
-                # print(f'verifiy node: schema{schema_id}')
-                # print(f'start verifying: {node.child_states}')
                 node.my_states.append(self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states))
-
-        # print(f'verify node" {node.get_path()} -> {node.errors}')
 
     def create_new_node(self, type, key=None):
         node = Node(key)
@@ -298,15 +276,15 @@ class Engine():
         except CircuitBreakerException as e:
             self.logs.add_log(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
                               'circuit_breaker')
-        # except Exception as e:
-        #     print(f'error! {e}')
-            
         finally:
             self.logs.report(self.circuit_breaker.max_recorded_depth)
+            top_obj_state = self.stack[0]
             
-        # print_schema_storage(self.schema_storage)
+            if len(top_obj_state.child_states[0]) == 0:
+                return "valid"
+            else:
+                return top_obj_state.child_states[0][0].state()
 
 if __name__ == '__main__':
     engine = Engine(schema=schema_file, target='data_unclosed_error.json', log_file_name='validation_log.txt', max_depth=10)
-    log_file = engine.run()
-    print(f'Validation log saved to: {log_file}')
+    engine.run()

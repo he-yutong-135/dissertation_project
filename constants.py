@@ -14,16 +14,6 @@ class SchemaType(StrEnum):
     VALUE = auto()
     COMPILE = auto()
 
-class ValidationStatus(StrEnum):
-    VALID = auto()
-    INVALID = auto()
-
-    def __repr__(self):
-        return self.__str__()
-
-    def __bool__(self):
-        return self is ValidationStatus.VALID
-
     
 class ErrorType(StrEnum):
     UNEXPECTED = "<UNEXPECTED>"
@@ -54,8 +44,8 @@ ERROR_TEMPLATES = {
         "keywords": []
     },
     ErrorType.INCOMPLETE: {
-        "template": "schema id({schema_id}) is not valid",
-        "keywords": ["schema_id id"]
+        "template": "value({value}) violates schema[{rule}], schema id: {schema_id}",
+        "keywords": ["value", "rule", "schema_id"]
     },
     ErrorType.DEPTH_ERROR: {
         "template": "maximum allowed depth exceeded: {depth}",
@@ -70,6 +60,44 @@ ERROR_TEMPLATES = {
         "keywords": []
     }
 }
+
+class ValidationResNoLog():
+    def __init__(self, has_error = True):
+        self.has_error = has_error
+
+    def __bool__(self):
+        return self.has_error
+    
+    def state(self):
+        if self: return 'invalid'
+        else: return 'valid'
+
+    def set_state(self, state):
+        self.has_error = state
+
+    def flip(self):
+        self.has_error = not self.has_error
+
+    def __iadd__(self, other):
+        if self: return self # already an error
+        if isinstance(other, list):
+            for result in other and result:
+                self.set_state(True)
+        # elif isinstance(other, ValidationError) and other:
+        elif isinstance(other, ValidationError) and other:
+            self.set_state(True)
+        elif isinstance(other, ValidationResult) and other:
+            # self.errors.extend([e for e in other.errors if e])
+            self.set_state(True)
+
+        elif isinstance(other, ValidationResNoLog) and other:
+            self.set_state(True)
+
+        return self
+    
+
+
+
 
 class ValidationError():
     def __init__(self, error_type: ErrorType, context = None):
@@ -115,21 +143,24 @@ class ValidationResult():
         elif isinstance(errors, list):
             self.errors = errors.copy()
 
+    # only add real errors
     def add(self, other):
         if isinstance(other, list):
-            for result in other:
+            for result in other and result:
                 self.add(result) 
         # elif isinstance(other, ValidationError) and other:
-        elif isinstance(other, ValidationError):
+        elif isinstance(other, ValidationError) and other:
             self.errors.append(other)
-        elif isinstance(other, ValidationResult):
+        elif isinstance(other, ValidationResult) and other:
             # self.errors.extend([e for e in other.errors if e])
             self.errors.extend(other.errors)
         return self
     
     def add_info(self, node_path = None, schema_id = None):
-        self.path = node_path
-        self.schema_id = schema_id
+        if node_path:
+            self.path = node_path
+        if schema_id:
+            self.schema_id = schema_id
         # print(f'create validation result: {self.errors}')
         return self
     
@@ -145,8 +176,8 @@ class ValidationResult():
     
     def __repr__(self):
         error_log = ''
-        if self.path: error_log = f'invalid json item: path({self.path})\n'
         if self.schema_id: error_log += f'{dent}schema id: {self.schema_id}\n'
+        if not self: error_log += 'valid'
         for e in self.errors:
             error_log += f'{dent}{dent}{str(e)}\n'
         return error_log
@@ -175,6 +206,9 @@ def assert_all_logs(logs, error_dict: dict):
         target_errors = error_dict.get(path, None)
         assert target_errors is not None, f'extra errors added: {log.path}({log.errors})'
         assert_single_log(log, path, target_errors)
+
+def format_node_info(path, info):
+    return f'invalid json item: path({path}), value({info})'
     
 class ValidationLog():
     def __init__(self, log_file = None):
@@ -188,7 +222,8 @@ class ValidationLog():
         # print(f'add log to logs: {errors}')
         
         if isinstance(errors, ValidationError): errors = ValidationResult(errors)
-        errors.add_info(path, info)
+        # errors.add_info(path, info)
+        self.log_print.append(format_node_info(path, info))
         self._logs.append(errors)
         self.log_print.append(str(errors))
         # print(f'log added: {self._logs}')
@@ -206,7 +241,9 @@ class ValidationLog():
                 for log in self.log_print:
                     f.write(log)
                     f.write('\n')
-        print(self._logs)
+        else:
+            for log in self.log_print:
+                print(log)
     
 type_map = {
     "string": str,
