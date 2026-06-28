@@ -30,7 +30,8 @@ def is_number(value):
     return validate_types(value, ['number', 'integer'])
 
 def validate_type(value, schema_type):
-    if value is None and schema_type == 'object': return True
+    if value is None:
+        return schema_type in {"object", "array"}
     
     python_type = type_map.get(schema_type, None)
     if not python_type:
@@ -273,9 +274,9 @@ class ValidationEngine():
             idx = Cursor()
         # print(f'validate_schema: {value} with schema id: {schema_id}')
         if schema_id == ACCEPT_NODE.id:
-            return ValidationResult(ValidationError(ErrorType.NO_ERROR), schema_id=schema_id)
+            return NodeValidationRes(ValidationError(ErrorType.NO_ERROR), schema_id=schema_id)
         if schema_id == REJECT_NODE.id:
-            return ValidationResult(ValidationError(ErrorType.UNEXPECTED, {'value': value}), schema_id=schema_id)
+            return NodeValidationRes(ValidationError(ErrorType.UNEXPECTED, {'value': value}), schema_id=schema_id)
         
         errors = {}
         current_schema = self.get_schema(schema_id)
@@ -285,7 +286,7 @@ class ValidationEngine():
             if key in child_schema_keywords: 
                 # print(f'all states: {children_state}, state idx: {idx.value()}')
                 
-                validationResult = ValidationResult(schema_id=schema_id)
+                validationResult = NodeValidationRes(schema_id=schema_id)
                 # it consumes one schema result
                 child_validation_results = children_state[idx.value()] # a list
                 idx.increase()
@@ -320,11 +321,11 @@ class ValidationEngine():
         return error
     
     def compress_errors(self, errors, schema_id):
-        if isinstance(errors, ValidationResult): 
+        if isinstance(errors, NodeValidationRes): 
             return errors
         
         if isinstance(errors, ValidationError):
-            return ValidationResult(errors, schema_id=schema_id)
+            return NodeValidationRes(errors, schema_id=schema_id)
         
         if isinstance(errors, list):
             result_lst = []
@@ -333,7 +334,7 @@ class ValidationEngine():
 
             return result_lst
             
-        result = ValidationResult(schema_id=schema_id)
+        result = NodeValidationRes(schema_id=schema_id)
         if isinstance(errors, dict):
             for k, v in errors.items():
                 errors[k] = self.compress_errors(v, schema_id)

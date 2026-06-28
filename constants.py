@@ -61,5 +61,5 @@ schema_file, data_file = 'schema.json', 'data.json'
 if __name__ == "__main__":
     pass
 
-needs_log = False
+needs_log = True
 

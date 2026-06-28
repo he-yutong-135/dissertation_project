@@ -1,11 +1,13 @@
 from schema_builder import build_schema, ACCEPT_NODE, print_schema_storage, SchemaRef
 from token_gen import token_stream
-from error_log import ValidationResult, ValidationError, ErrorType, ValidationLog
+from error_log import ValidationResult, ValidationError, ErrorType, ValidationLog, ValidationResNoLog
 from validators import ValidationEngine
 from constants import NodeType, schema_file
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
-from constants import get_fingerprint_obj, get_fingerprint_arr
+from constants import get_fingerprint_obj, get_fingerprint_arr, needs_log
 from pathlib import Path
+
+NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
 
 class Node:
     def __init__(self, key=None):
@@ -13,7 +15,7 @@ class Node:
         self.value = None # primitive only
         # self.state = ValidationStatus.VALID # stores the results of validation using necessary schemas
         
-        self.errors = ValidationResult()
+        self.errors = NodeValidationRes()
         self.parent = None
         self.type = NodeType.Object # OBJECT / ARRAY / VALUE
         self.children = None # dict or list
@@ -179,7 +181,7 @@ class Engine():
     def force_pop(self):
         if len(self.stack) == 1:
             raise ValueError('cannot pop the root node')
-        unclose_error = ValidationResult(ValidationError(ErrorType.UNCLOSED))
+        unclose_error = NodeValidationRes(ValidationError(ErrorType.UNCLOSED))
         while(len(self.stack) > 1):
             node = self.stack.pop()
             if len(node.my_states) == 0:
@@ -272,8 +274,8 @@ class Engine():
                 self.force_pop()
         
         except CircuitBreakerException as e:
-            self.logs.add_log(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
-                              'circuit_breaker')
+            self.logs.add_log(NodeValidationRes(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
+                              'circuit_breaker'))
             
         except Exception as e:
             print(f'error! {e}')
