@@ -132,8 +132,6 @@ def build_schema(file_name):
     parse(token_stream(file_name))
     return schema_storage
 
-
-
 if __name__ == "__main__":
     storage = None
     if len(sys.argv) > 1:

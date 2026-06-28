@@ -1,13 +1,11 @@
 from schema_builder import build_schema, ACCEPT_NODE, print_schema_storage, SchemaRef
 from token_gen import token_stream
-from validators import ValidationEngine, ValidationResult
-from constants import NodeType, schema_file, ValidationError, ErrorType, dent
+from error_log import ValidationResult, ValidationError, ErrorType, ValidationLog
+from validators import ValidationEngine
+from constants import NodeType, schema_file
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
-from constants import get_fingerprint_obj, get_fingerprint_arr, ValidationLog
-
-
+from constants import get_fingerprint_obj, get_fingerprint_arr
 from pathlib import Path
-
 
 class Node:
     def __init__(self, key=None):
@@ -276,14 +274,17 @@ class Engine():
         except CircuitBreakerException as e:
             self.logs.add_log(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
                               'circuit_breaker')
+            
+        except Exception as e:
+            print(f'error! {e}')
         finally:
             self.logs.report(self.circuit_breaker.max_recorded_depth)
             top_obj_state = self.stack[0]
             
             if len(top_obj_state.child_states[0]) == 0:
-                return "valid"
+                return True, "invalid"
             else:
-                return top_obj_state.child_states[0][0].state()
+                return bool(top_obj_state.child_states[0][0]), top_obj_state.child_states[0][0].state()
 
 if __name__ == '__main__':
     engine = Engine(schema=schema_file, target='data_unclosed_error.json', log_file_name='validation_log.txt', max_depth=10)

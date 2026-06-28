@@ -1,6 +1,9 @@
-from constants import type_map, ErrorType, ValidationError, ValidationResult
+from constants import type_map, Cursor, needs_log
+from error_log import ErrorType, ValidationError, ValidationResult, ValidationResNoLog
 from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, is_schema_ref
 import re
+
+NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
 
 def validate_minimum(value, min_val):
     if not is_number(value): return True # does not apply to non-numeric value
@@ -155,40 +158,33 @@ validator_storage = {
 }
 
 def validate_anyOf(res_lst: list):
-    # print(f'validate any: {[bool(res) for res in res_lst]}')
     for res in res_lst:
         if not res or res is None: # if one branch is valid
             return True
-        
     return False
 
 def validate_allOf(res_lst: list):
-    # print(f'validate all: {[bool(res) for res in res_lst]}')
     for res in res_lst:
         if res or  res is None: # if one branch is invalid
             return False
-        
     return True
 
 def validate_oneOf(res_lst: list):
     cnt = 0
     for res in res_lst:
         if not res or res is None: cnt += 1 # count the number of valid branches
-
     if cnt == 1:
         return True
     else:
         return False
 
-def validate_not(res: ValidationResult):
-    # print(f'validate not: {bool(res)}')
+def validate_not(res):
     if not res or  res is None: # no error -> return an error
         return False # invalid
     else:
         return True # valid, pass
     
-def validate_ref(res: ValidationResult):
-    # print(f'validate not: {bool(res)}')
+def validate_ref(res):
     if not res or  res is None: # no error
         return True # valid
     else:
@@ -205,15 +201,6 @@ composition_validators = {
 
 composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref"]
 child_schema_keywords = ["properties", "items", "contains"]
-
-# def validate_all(state_list):
-#     print(f'validating all: {[bool(state) for state in state_list]}')
-#     if not any(state_list): return True
-#     else: return False
-
-# def validate_contains(state_list):
-#     if not all(state_list): return True
-#     else: return False
 
 child_schema_validators = {
     "properties": validate_allOf,
@@ -235,15 +222,7 @@ def validate_if_then_else(errors: dict):
     if if_value:
         return not bool(else_value), states
     
-class Cursor:
-    def __init__(self):
-        self.idx = 0
 
-    def increase(self):
-        self.idx += 1
-
-    def value(self):
-        return self.idx
 
 class ValidationEngine():
     def __init__(self, schema_storage):
@@ -336,27 +315,18 @@ class ValidationEngine():
                 elif not func(value, param):
                     
                     errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
-                    # print(f'fail, add error: {errors[key]}')
-                # else:
-                #     errors[key] = ValidationError(ErrorType.NO_ERROR)
 
-
-        # print(f'validation errors: {errors}')
         error = self.compress_errors(errors, schema_id)
-        # if errors: print(f'after compressing: {error}')
         return error
     
     def compress_errors(self, errors, schema_id):
-        # print(f'now compressing errors: {errors}')
         if isinstance(errors, ValidationResult): 
             return errors
         
         if isinstance(errors, ValidationError):
             return ValidationResult(errors, schema_id=schema_id)
-
         
         if isinstance(errors, list):
-            
             result_lst = []
             for item in errors:
                 result_lst.append(self.compress_errors(item, schema_id))
@@ -365,39 +335,23 @@ class ValidationEngine():
             
         result = ValidationResult(schema_id=schema_id)
         if isinstance(errors, dict):
-            # compress the value first
             for k, v in errors.items():
                 errors[k] = self.compress_errors(v, schema_id)
-
-            
-
             if 'if' in errors.keys():
                 res, states = validate_if_then_else(errors)
                 if not res:
-                    # result += ValidationResult(ValidationError(ErrorType.NO_ERROR))
-                # else:
                     result += ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": "if-then-else", "states": states})
-                # else:
-                #     result += ValidationResult(ValidationError(ErrorType.NO_ERROR))
-
             
             for k, v in errors.items():
-                # print(f'key: {k}, value: {v}')
                 
                 if k in ['if', 'then', 'else']: continue # they are processed
                 res_lst = v if isinstance(v, list) else [v]
                 res_states = [res.state() for res in res_lst]
                 
                 if k in composition_validators.keys():
-                    
                     res = composition_validators.get(k)(v)
-                    # print(f'composition schema, key: {k}, value: {v}')
-                    
-                    # if res:
-                    #     result += ValidationResult(ValidationError(ErrorType.NO_ERROR))
                     if not res:
                         result += ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": k, "states": ', '.join(res_states)})
-                # if not of composition schema
                 else:
                     result += v
 
@@ -408,7 +362,6 @@ class ValidationEngine():
     def collect_schemas_for_children(self, schema_lst):
         extra_schemas = []
         schema_lst = schema_lst if isinstance(schema_lst, list) else [schema_lst]
-        # print(f'collect_schemas_for_children: {schema_lst}')
 
         for schema_id in schema_lst:
             schema = self.get_schema(schema_id)
@@ -434,14 +387,11 @@ class ValidationEngine():
                     for ref in v:
                         next_schema_id = ref.value()
                         extra_schemas += self.collect_schemas_for_children(next_schema_id)
-
-        
         return extra_schemas
     
     def collect_schemas_for_me(self, schema_lst, my_key):
         schema_ids = []
         schema_lst = schema_lst if isinstance(schema_lst, list) else [schema_lst]
-        # print(f'collect_schemas_for_me: {schema_lst}')
 
         for schema in schema_lst:
             if isinstance(schema, SchemaRef): 
@@ -459,10 +409,4 @@ class ValidationEngine():
                 raise Exception(f'unexpected schema lst provided: {schema_lst}')
             
         assert len(schema_lst) == len(schema_ids)
-        # print(f'schema ids from parent: {schema_lst}')
-        # print(f'my schema ids: {schema_ids}')
-
         return schema_ids
-                
-        
-
