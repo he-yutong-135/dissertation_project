@@ -27,7 +27,7 @@ def is_number(value):
 
 def validate_type(value, schema_type):
     if value is None:
-        return schema_type in {"object", "array"}
+        return schema_type in {"object", "array", "null"}
     
     python_type = type_map.get(schema_type, None)
     if not python_type:
