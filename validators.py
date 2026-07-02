@@ -21,6 +21,9 @@ class ValidationEngine():
     def update_schema(self, schema_ref):
         schema = self.get_schema(schema_ref.value())
         ref_path = schema.schemas.get('$ref', None)
+        # if it has been updated, no need to update again
+        if isinstance(ref_path, SchemaRef):
+            return
         if ref_path:
             def_schema = self.find_schema(ref_path)
             schema.schemas['$ref'] = def_schema
@@ -68,6 +71,7 @@ class ValidationEngine():
                 
                 validationResult = NodeValidationRes(schema_id=schema_id)
                 # it consumes one schema result
+                # print(children_state)
                 child_validation_results = children_state[idx.value()] # a list
                 idx.increase()
 
@@ -84,12 +88,21 @@ class ValidationEngine():
                 next_schema_id = param.value()
                 errors[key] = self.validate_schema(next_schema_id, value, children_state, idx)
 
-            elif isinstance(param, list) and is_schema_ref(param[0]):
+            elif isinstance(param, list) and key in ["anyOf", "allOf", "oneOf"]:
                 errors[key] = list()
                 for ref in param:
-                    next_schema_id = ref.value()
+                    if isinstance(ref, bool):
+                        if ref: 
+                            next_schema_id = ACCEPT_NODE.id
+                        else:
+                            next_schema_id = REJECT_NODE.id
+                    else:
+                        next_schema_id = ref.value() 
+                    # print(f'validating {key} with value: {value} and param: {param}')
                     errors[key].append(self.validate_schema(next_schema_id, value, children_state,idx))
+                    # print(f'validation result for {key}: {errors[key]}')
             else:
+                # print(f'validating {key} with value: {value} and param: {param}')
                 func = validator_storage.get(key)
                 if not func:
                     errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param}]'})
@@ -166,11 +179,18 @@ class ValidationEngine():
                 elif k in composition_keywords:
                     v = v if isinstance(v, list) else [v]
                     for ref in v:
-                        next_schema_id = ref.value()
-                        extra_schemas += self.collect_schemas_for_children(next_schema_id)
+                        if isinstance(ref, bool):
+                            if ref: extra_schemas.append(ACCEPT_NODE.id)
+                            else: extra_schemas.append(REJECT_NODE.id)
+                        else:
+                            next_schema_id = ref.value()
+                            extra_schemas += self.collect_schemas_for_children(next_schema_id)
         return extra_schemas
     
     def collect_schemas_for_me(self, schema_lst, my_key):
+        # if not my_key:
+        #     return None
+        
         schema_ids = []
         schema_lst = schema_lst if isinstance(schema_lst, list) else [schema_lst]
 
@@ -190,4 +210,6 @@ class ValidationEngine():
                 raise Exception(f'unexpected schema lst provided: {schema_lst}')
             
         assert len(schema_lst) == len(schema_ids)
+
+        # print(f'Schema IDs for key "{my_key}": {schema_ids}')
         return schema_ids

@@ -129,7 +129,15 @@ def extra_node(storage=None):
 def build_schema(file_name):
     # clear the schema storage before building a new schema
     schema_storage.clear()
-    parse(token_stream(file_name))
+    value = parse(token_stream(file_name))
+    if value and len(schema_storage) == 0:
+        # if the schema is a boolean and no nodes have been created, create a new node for it
+        node = SchemaNode()
+        node.schemas[None] = ACCEPT_NODE.id if bool(value) else REJECT_NODE.id
+        schema_storage.append(node)
+
+    # for token in token_stream(file_name):
+    #     print(token)
     return schema_storage
 
 if __name__ == "__main__":

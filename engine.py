@@ -1,3 +1,5 @@
+import re
+
 from schema_builder import build_schema, ACCEPT_NODE, print_schema_storage, SchemaRef
 from token_gen import token_stream
 from error_log import ValidationResult, ValidationError, ErrorType, ValidationLog, ValidationResNoLog
@@ -5,7 +7,8 @@ from validators import ValidationEngine
 from constants import NodeType, schema_file
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
 from constants import get_fingerprint_obj, get_fingerprint_arr, needs_log
-from pathlib import Path
+
+import gc
 
 NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
 
@@ -128,20 +131,25 @@ class Engine():
         # set up stack
         self.stack = [Node('root')] # adding a dummy node to eliminate the need of boundary checking
 
-        self.schema_storage = build_schema(Path(schema).resolve()) if schema is not None else None
-        self.token_stream = token_stream(Path(target).resolve()) if target is not None else None
+        self.schema_storage = build_schema(schema) if schema is not None else None
+        self.token_stream = token_stream(target) if target is not None else None
         self.validators = ValidationEngine(self.schema_storage)
         self.circuit_breaker = CircuitBreaker(max_depth)
 
         self.current_node = self.stack[0]
 
     def push(self, node):
+
+        # print(len(self.stack))
         # bind the node with its schema
-
-        # print(f'push: {node.get_path()}')
-        # print(f'node parent: {node.parent}')
-
-        node.my_schema_id_lst = self.validators.collect_schemas_for_me(node.parent.children_schema_id_lst, node.key)
+        schema_id_lst = self.validators.collect_schemas_for_me(node.parent.children_schema_id_lst, node.key)
+        # print(schema_id_lst)
+        if schema_id_lst is not None:
+            node.my_schema_id_lst = schema_id_lst
+        # if not isinstance(node.my_schema_id_lst, list): 
+        #     print(node)
+        #     print(node.my_schema_id_lst)
+        # print(f'push: find schema for {node.key}: {node.my_schema_id_lst}')
         node.children_schema_id_lst = self.validators.collect_schemas_for_children(node.my_schema_id_lst)
 
         # multiple schemas
@@ -155,6 +163,7 @@ class Engine():
 
     def pop(self):
         node = self.stack.pop()
+        # ref = weakref.ref(node)
         self.circuit_breaker.on_pop()
         if node.parent is None:
             raise ValueError('standalone node')
@@ -168,16 +177,27 @@ class Engine():
         # then remove it from the children dict
         node.parent.register_state(node)
         node.parent.remove_child(node)
+        
 
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
-
         for i in range(len(node.my_schema_id_lst)):
             if node.my_states[i]:
                 self.logs.add_log(node.my_states[i], node.get_path(), str(node))
-        
-        return node
-    
+
+
+        # refs = gc.get_referrers(node)
+        # # print(f'pop: {node}')
+        # if len(refs) > 0:
+        #     print(f'number of referrers: {len(refs)}')
+        #     print(f'referrers: {refs}')
+
+        # for r in gc.get_referrers(node):
+        #     print(type(r))
+        node.parent = None # break the reference to its parent 
+        node = None        
+
+
     def force_pop(self):
         if len(self.stack) == 1:
             raise ValueError('cannot pop the root node')
@@ -197,6 +217,8 @@ class Engine():
             node.parent.register_state(node)
             
     def verify_node(self, node: Node):
+        if len(node.my_schema_id_lst) == 0:
+            return
         if node.type is NodeType.Value:
             for schema_id in node.my_schema_id_lst:
                 node.my_states.append(self.validators.validate_schema(schema_id, node.value))
@@ -222,8 +244,10 @@ class Engine():
             
     def run(self):
         pending_key = None
-
         try:
+            if self.token_stream is None:
+                return
+            
             for token in self.token_stream:
                 if token.is_start_object():
                     if pending_key is None and len(self.stack) == 1:
@@ -267,7 +291,7 @@ class Engine():
                         node.add_value(value)
                         pending_key = None
 
-                    node = self.pop()
+                    self.pop()
             
             # if stack has remaining nodes, they are not closed, force pop them
             if len(self.stack) > 1:
@@ -282,9 +306,10 @@ class Engine():
         finally:
             self.logs.report(self.circuit_breaker.max_recorded_depth)
             top_obj_state = self.stack[0]
+            # print(top_obj_state.child_states)
             
             if len(top_obj_state.child_states[0]) == 0:
-                return True, "invalid"
+                return False, "valid"
             else:
                 return bool(top_obj_state.child_states[0][0]), top_obj_state.child_states[0][0].state()
 

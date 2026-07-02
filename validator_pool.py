@@ -62,6 +62,9 @@ def validate_multiple_of(value, multiple):
         return False
     return True
 
+def validate_const(value, const):
+    return value == const
+
 def validate_exclusive_maximum(value, exclusive_max):
     if not is_number(value): return True # does not apply to non-numeric value
     # if not is_number(exclusive_max): return False
@@ -143,6 +146,7 @@ validator_storage = {
     "examples": accept,
     "additionalProperties": accept,
     "$defs": accept,
+    "const": validate_const,
 
     # array validators
     "uniqueItems": validate_unique_items,
@@ -155,18 +159,21 @@ validator_storage = {
 }
 
 def validate_anyOf(res_lst: list):
+    res_lst = res_lst if isinstance(res_lst, list) else [res_lst]
     for res in res_lst:
         if not res or res is None: # if one branch is valid
             return True
     return False
 
 def validate_allOf(res_lst: list):
+    res_lst = res_lst if isinstance(res_lst, list) else [res_lst]
     for res in res_lst:
         if res or  res is None: # if one branch is invalid
             return False
     return True
 
 def validate_oneOf(res_lst: list):
+    res_lst = res_lst if isinstance(res_lst, list) else [res_lst]
     cnt = 0
     for res in res_lst:
         if not res or res is None: cnt += 1 # count the number of valid branches
@@ -212,6 +219,7 @@ composition_validators = {
 }
 
 composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref"]
+composition_keywords_lst = ["anyOf", "allOf", "oneOf"]
 child_schema_keywords = ["properties", "items", "contains"]
 
 child_schema_validators = {

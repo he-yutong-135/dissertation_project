@@ -1,7 +1,9 @@
 import sys
 from enum import Enum, auto
 from dataclasses import dataclass
-from typing import Iterator
+from io import StringIO
+import json
+from pathlib import Path
 
 
 TEST_FILE = 'data.json'
@@ -207,12 +209,27 @@ def token_gen(tokens):
                     next_state = "COMMA_OR_END"
                 else:
                     raise ValueError(f"Unexpected {type} in state {next_state} within array")
+                
+def token_stream_from_stream(stream):
+    char_stream = CharStream(stream)
+    yield from token_gen(raw_lexer(char_stream))
         
-def token_stream(file_name):
-    with open(file_name, 'r') as f:
-        char_stream = CharStream(f)
-        for token in token_gen(raw_lexer(char_stream)):
-            yield token
+# def token_stream(file_name):
+#     with open(file_name, 'r') as f:
+#         char_stream = CharStream(f)
+#         for token in token_gen(raw_lexer(char_stream)):
+#             yield token
+
+def token_stream(source):
+    if isinstance(source, Path):
+        with open(source) as f:
+            yield from token_stream_from_stream(f)
+
+    # for reading test data
+    else:
+        yield from token_stream_from_stream(
+            StringIO(json.dumps(source))
+        )
 
 def print_token_stream(token_stream):
     print("token stream: ==>")
