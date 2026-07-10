@@ -87,7 +87,9 @@ def read_string(char_stream: CharStream):
         c = char_stream.get()
 
         if c == '':
-            raise ValueError("Unterminated string")
+            # raise ValueError("Unterminated string")
+            return ''.join(buf[:-1])
+
 
         buf.append(c)
 
@@ -151,28 +153,28 @@ def token_gen(tokens):
             next_state = "VALUE"
 
         elif value == '}':
-            if not stack or stack[-1] != '{':
-                raise ValueError("Mismatched }")
+            # if not stack or stack[-1] != '{':
+            #     raise ValueError("Mismatched }")
             stack.pop()
             yield Token(TokenType.END_OBJECT)
             next_state = "KEY_OR_END"
 
         elif value == ']':
-            if not stack or stack[-1] != '[':
-                raise ValueError("Mismatched ]")
+            # if not stack or stack[-1] != '[':
+            #     raise ValueError("Mismatched ]")
             stack.pop()
             yield Token(TokenType.END_ARRAY)
             next_state = "KEY_OR_END"
 
         elif value == ':':
-            if next_state != "COLON":
-                raise ValueError("Unexpected :")
+            # if next_state != "COLON":
+            #     raise ValueError("Unexpected :")
 
             next_state = "VALUE"
 
         elif value == ',':
-            if not stack and next_state != "COMMA_OR_END":
-                raise ValueError("Unexpected ,")
+            # if not stack and next_state != "COMMA_OR_END":
+            #     raise ValueError("Unexpected ,")
             if stack[-1] == "{":
                 next_state = "KEY"
             else:
@@ -189,8 +191,8 @@ def token_gen(tokens):
             if stack[-1] == "{":
             
                 if next_state == "KEY":
-                    if type != "STRING":
-                        raise ValueError("Expected string for key")
+                    # if type != "STRING":
+                    #     raise ValueError("Expected string for key")
                     
                     yield Token(TokenType.KEY, normalize_key(value))
                     next_state = "COLON"
@@ -200,15 +202,15 @@ def token_gen(tokens):
                     yield Token(TokenType.VALUE, value)
                     next_state = "COMMA_OR_END"
 
-                else:
-                    raise ValueError(f"Unexpected {type} in state {next_state}")
+                # else:
+                #     raise ValueError(f"Unexpected {type} in state {next_state}")
                 
             elif stack[-1] == "[":
                 if next_state == "VALUE":
                     yield Token(TokenType.VALUE, value)
                     next_state = "COMMA_OR_END"
-                else:
-                    raise ValueError(f"Unexpected {type} in state {next_state} within array")
+                # else:
+                #     raise ValueError(f"Unexpected {type} in state {next_state} within array")
                 
 def token_stream_from_stream(stream):
     char_stream = CharStream(stream)

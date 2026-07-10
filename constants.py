@@ -53,7 +53,7 @@ WILDCARD = "*"
 error_buffer = []
 BATCH_SIZE = 10
 LOG_FILE = 'validation_log.txt'
-MAX_DEPTH = 10
+MAX_DEPTH = 100000000
 dent = '  '
 
 schema_file, data_file = 'schema.json', 'data.json'

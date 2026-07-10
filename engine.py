@@ -1,6 +1,4 @@
-import re
-
-from schema_builder import build_schema, ACCEPT_NODE, print_schema_storage, SchemaRef
+from schema_builder import build_schema, SchemaRef
 from token_gen import token_stream
 from error_log import ValidationResult, ValidationError, ErrorType, ValidationLog, ValidationResNoLog
 from validators import ValidationEngine
@@ -16,14 +14,9 @@ class Node:
     def __init__(self, key=None):
         self.key = key
         self.value = None # primitive only
-        # self.state = ValidationStatus.VALID # stores the results of validation using necessary schemas
-        
-        self.errors = NodeValidationRes()
         self.parent = None
         self.type = NodeType.Object # OBJECT / ARRAY / VALUE
         self.children = None # dict or list
-
-        self.schema_id = 0
 
         self.my_schema_id_lst = [SchemaRef(0)]
         self.my_states = []
@@ -44,7 +37,6 @@ class Node:
             return all(self.children[k] == other.children[k] for k in self.children.keys())
 
     def content(self):
-        # print(self.my_states)
         for i in range(len(self.my_schema_id_lst)):
             if len(self.my_states) > i and self.my_states[i]:
                 print(f'schema id: {self.my_schema_id_lst[i].value()}')
@@ -97,15 +89,10 @@ class Node:
             raise ValueError('fail to remove the child')
         
         # calculate the fingerprint of the child node and store it in the parent node's children dict
-        if node.type is NodeType.Object:
-            node.value = get_fingerprint_obj(node.children)
-        if node.type is NodeType.Array:
-            node.value = get_fingerprint_arr(node.children.values())
-
-        # self.children.pop(node.key)
         # if the node is of type Value, stores its value directly
         self.children[node.key] = node.value
-        # print(f'[{self}]remove child: {node.value}')
+
+        # print(len(self.children))
 
     def add_value(self, value):
         if self.type is NodeType.Value:
@@ -122,6 +109,7 @@ class Node:
         assert len(node.my_states) == len(self.child_states)
         for i in range(len(node.my_states)):
             self.child_states[i].append(node.my_states[i])
+        # print(len(self.child_states), len(node.my_states))
 
 class Engine():
     def __init__(self, schema=None, target=None, max_depth=None, log_file_name=None):
@@ -139,6 +127,7 @@ class Engine():
         self.current_node = self.stack[0]
 
     def push(self, node):
+        # print(f'push: stack: {len(self.stack)}, parent children: {node.parent.children}')
 
         # print(len(self.stack))
         # bind the node with its schema
@@ -161,7 +150,9 @@ class Engine():
         self.stack.append(node)
         self.circuit_breaker.on_push()
 
+
     def pop(self):
+        # print(f'pop: {len(self.stack)}')
         node = self.stack.pop()
         # ref = weakref.ref(node)
         self.circuit_breaker.on_pop()
@@ -177,7 +168,6 @@ class Engine():
         # then remove it from the children dict
         node.parent.register_state(node)
         node.parent.remove_child(node)
-        
 
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
@@ -185,18 +175,25 @@ class Engine():
             if node.my_states[i]:
                 self.logs.add_log(node.my_states[i], node.get_path(), str(node))
 
-
-        # refs = gc.get_referrers(node)
-        # # print(f'pop: {node}')
-        # if len(refs) > 0:
-        #     print(f'number of referrers: {len(refs)}')
-        #     print(f'referrers: {refs}')
-
-        # for r in gc.get_referrers(node):
-        #     print(type(r))
+        # print(f'pop: stack: {len(self.stack)}, parent children: {node.parent.children}')
         node.parent = None # break the reference to its parent 
-        node = None        
+        
+        
+        node.my_states = None
+        node.child_states = None 
+        
 
+        # refs = gc.get_referrers(node.my_states)
+
+        # print(len(refs))
+        # for r in refs:
+        #     if isinstance(r, Node): 
+        #         print(r)
+        
+        node.children = None # break the reference to its children
+        node.my_states = None
+        node.child_states = None
+        node = None
 
     def force_pop(self):
         if len(self.stack) == 1:
@@ -226,10 +223,12 @@ class Engine():
         elif node.type is NodeType.Object:
             for schema_id in node.my_schema_id_lst:
                 node.my_states.append(self.validators.validate_schema(schema_id, node.children, node.child_states))
+                node.value = get_fingerprint_obj(node.children)
 
         elif node.type is NodeType.Array:
             for schema_id in node.my_schema_id_lst:
                 node.my_states.append(self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states))
+                node.value = get_fingerprint_arr(node.children.values())
 
     def create_new_node(self, type, key=None):
         node = Node(key)

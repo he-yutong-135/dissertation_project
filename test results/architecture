@@ -1,0 +1,25 @@
+digraph {
+	graph [bgopacity=0.0 dpi=300 nodesep=0.5 rankdir=LR ranksep=0.7 splines=polyline]
+	node [fontname="Helvetica,Arial,sans-serif" fontsize=12 penwidth=1.5 shape=box style="filled, rounded"]
+	edge [arrowsize=0.8 color="#718096" penwidth=1.2]
+	json_input [label="JSON Input" color="#CBD5E0" fillcolor="#E2E8F0"]
+	schema_input [label="Schema Input" color="#CBD5E0" fillcolor="#E2E8F0"]
+	token [label="Token Generator"]
+	engine [label="Engine(stack)"]
+	schema [label="Schema Builder"]
+	validator [label="Validator Module"]
+	logger [label="Logging Module"]
+	breaker [label="Circuit Breaker"]
+	report [label="Report Output" color="#CBD5E0" fillcolor="#E2E8F0"]
+	json_input -> token
+	schema_input -> token
+	token -> schema [label="schema token stream"]
+	token -> engine [label="json token stream"]
+	schema -> engine [label="schema table"]
+	engine -> validator [label=invoke]
+	breaker -> engine [label=monitor]
+	validator -> engine [label=result]
+	engine -> logger [label="report validation error"]
+	validator -> logger [label="report structural error"]
+	logger -> report
+}
