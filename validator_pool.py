@@ -107,8 +107,11 @@ def validate_unique_items(children, required):
     return True
 
 def validate_dependent_required(children, dependentRequired):
+    if not isinstance(children, dict):
+        return True
     keys = children.keys() if children else []
     # print(type(dependentRequired))
+    
     for k, v in dependentRequired.items():
         if k in keys:
             for item in v:
@@ -117,6 +120,9 @@ def validate_dependent_required(children, dependentRequired):
     return True
 
 def validate_required(children, required):
+    if not isinstance(children, dict):
+        return True
+    # print(f'validate_required: {children}, {required}')
     keys = children.keys() if children else []
     for item in required:
         if item not in keys:
@@ -145,6 +151,7 @@ validator_storage = {
     "description": accept,
     "examples": accept,
     "additionalProperties": accept,
+    "items": accept,
     "$defs": accept,
     "const": validate_const,
 
@@ -220,11 +227,11 @@ composition_validators = {
 
 composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref"]
 composition_keywords_lst = ["anyOf", "allOf", "oneOf"]
-child_schema_keywords = ["properties", "items", "contains"]
+child_schema_keywords = ["properties", "contains", "prefixItems"]
 
 child_schema_validators = {
     "properties": validate_allOf,
-    "items": validate_allOf,
+    "prefixItems": validate_allOf,
     "contains": validate_anyOf
 }
 

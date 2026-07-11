@@ -21,7 +21,7 @@ class Node:
         self.my_schema_id_lst = [SchemaRef(0)]
         self.my_states = []
 
-        self.children_schema_id_lst = [SchemaRef(0)]
+        self.children_schema_id_lst = [(None, SchemaRef(0))]
         self.child_states = [[]] # stores the extra states from children, a list validationResult
 
     def __eq__(self, other):
@@ -127,18 +127,18 @@ class Engine():
         self.current_node = self.stack[0]
 
     def push(self, node):
-        # print(f'push: stack: {len(self.stack)}, parent children: {node.parent.children}')
+        print(f'push: stack: {len(self.stack)}, parent children: {node.parent.children}')
 
         # print(len(self.stack))
         # bind the node with its schema
-        schema_id_lst = self.validators.collect_schemas_for_me(node.parent.children_schema_id_lst, node.key)
+        schema_id_lst = self.validators.collect_schemas_for_me(node.parent.children_schema_id_lst, node.key, node.type)
         # print(schema_id_lst)
         if schema_id_lst is not None:
             node.my_schema_id_lst = schema_id_lst
         # if not isinstance(node.my_schema_id_lst, list): 
         #     print(node)
         #     print(node.my_schema_id_lst)
-        # print(f'push: find schema for {node.key}: {node.my_schema_id_lst}')
+        print(f'push: find schema for {node}: {node.my_schema_id_lst}')
         node.children_schema_id_lst = self.validators.collect_schemas_for_children(node.my_schema_id_lst)
 
         # multiple schemas
@@ -160,7 +160,7 @@ class Engine():
             raise ValueError('standalone node')
         # print('----------------')
         # print(f'pop node: {node}')
-        # print(f'pop: {node.get_path()}')
+        print(f'pop: {node.get_path()}')
         # print(f'my content: {node.content()}')
         self.verify_node(node)
 
@@ -214,6 +214,8 @@ class Engine():
             node.parent.register_state(node)
             
     def verify_node(self, node: Node):
+        # print(f'node: {node.value}')
+        # print(f'verify node: {node.my_schema_id_lst}')
         if len(node.my_schema_id_lst) == 0:
             return
         if node.type is NodeType.Value:
@@ -248,6 +250,7 @@ class Engine():
                 return
             
             for token in self.token_stream:
+                print(f'token: {token}')
                 if token.is_start_object():
                     if pending_key is None and len(self.stack) == 1:
                         key = 'top_object'
@@ -300,17 +303,18 @@ class Engine():
             self.logs.add_log(NodeValidationRes(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
                               'circuit_breaker'))
             
-        except Exception as e:
-            print(f'error! {e}')
+        # except Exception as e:
+        #     print(f'error! {e}')
         finally:
             self.logs.report(self.circuit_breaker.max_recorded_depth)
             top_obj_state = self.stack[0]
-            # print(top_obj_state.child_states)
             
-            if len(top_obj_state.child_states[0]) == 0:
-                return False, "valid"
-            else:
-                return bool(top_obj_state.child_states[0][0]), top_obj_state.child_states[0][0].state()
+            
+            # if len(top_obj_state.child_states[0]) == 0:
+            #     return False, "valid"
+            # else:
+            #     # print(bool(top_obj_state.child_states[0][0]))
+            #     return bool(top_obj_state.child_states[0][0]), top_obj_state.child_states[0][0].state()
 
 if __name__ == '__main__':
     engine = Engine(schema=schema_file, target='data_unclosed_error.json', log_file_name='validation_log.txt', max_depth=10)
