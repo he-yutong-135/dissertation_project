@@ -57,15 +57,13 @@ class Node:
 
     def __repr__(self):
         value = ''
-        if self.type is NodeType.Value:
-            value = f'Value[{self.value}]'
-        elif self.children is not None:
-            if self.type is NodeType.Object:
-                value = f'Object[{', '.join(self.children.keys())}]'
-            elif self.type is NodeType.Array:
-                child_str = [str(x) for x in self.children.values()]
-                value = f'Array[{', '.join(child_str)}]'
-
+        if self.type is NodeType.Object and self.children:
+            value = f'{self.type}[{', '.join(self.children.keys())}]'
+        elif self.type is NodeType.Array and self.children:
+            child_str = [str(x) for x in self.children.values()]
+            value = f'{self.type}[{', '.join(child_str)}]'
+        else:
+            value = f'{self.type}[{self.value}]'
         return f'{value}'
 
     def set_schema(self, id):
@@ -94,14 +92,6 @@ class Node:
 
         # print(len(self.children))
 
-    def add_value(self, value):
-        if self.type is NodeType.Value:
-            self.set_value(value)
-       
-        else:
-            # print(f'wrong type: {self.type}')
-            raise TypeError()
-        
     def register_state(self, node):
 
         if node.key not in self.children.keys():
@@ -139,7 +129,7 @@ class Engine():
         #     print(node)
         #     print(node.my_schema_id_lst)
         print(f'push: find schema for {node}: {node.my_schema_id_lst}')
-        node.children_schema_id_lst = self.validators.collect_schemas_for_children(node.my_schema_id_lst)
+        node.children_schema_id_lst = self.validators.collect_schemas_for_children(node.my_schema_id_lst, node.type)
 
         # multiple schemas
         
@@ -214,23 +204,25 @@ class Engine():
             node.parent.register_state(node)
             
     def verify_node(self, node: Node):
-        # print(f'node: {node.value}')
-        # print(f'verify node: {node.my_schema_id_lst}')
+        print(f'node: {node.value} {node.type}')
+        print(f'verify node: {node.my_schema_id_lst}')
         if len(node.my_schema_id_lst) == 0:
             return
-        if node.type is NodeType.Value:
+        
+        if node.type is NodeType.Object:
             for schema_id in node.my_schema_id_lst:
-                node.my_states.append(self.validators.validate_schema(schema_id, node.value))
-
-        elif node.type is NodeType.Object:
-            for schema_id in node.my_schema_id_lst:
-                node.my_states.append(self.validators.validate_schema(schema_id, node.children, node.child_states))
-                node.value = get_fingerprint_obj(node.children)
+                node.my_states.append(self.validators.validate_schema(schema_id, node.children, node.child_states, node.type))
+                node.set_value(get_fingerprint_obj(node.children))
 
         elif node.type is NodeType.Array:
             for schema_id in node.my_schema_id_lst:
-                node.my_states.append(self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states))
-                node.value = get_fingerprint_arr(node.children.values())
+                node.my_states.append(self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states, my_type=node.type))
+                node.set_value(get_fingerprint_arr(node.children.values()))
+
+        else:
+            for schema_id in node.my_schema_id_lst:
+                node.my_states.append(self.validators.validate_schema(schema_id, node.value, my_type=node.type))
+
 
     def create_new_node(self, type, key=None):
         node = Node(key)
@@ -250,7 +242,7 @@ class Engine():
                 return
             
             for token in self.token_stream:
-                print(f'token: {token}')
+                # print(f'token: {token}')
                 if token.is_start_object():
                     if pending_key is None and len(self.stack) == 1:
                         key = 'top_object'
@@ -281,16 +273,30 @@ class Engine():
                     value = token.content
                     parent = self.current_node
 
+                    # decide the type of the value
+                    type = None
+                    print(value)
+                    if value is None:
+                        type = NodeType.Null
+                    elif isinstance(value, bool):
+                        type = NodeType.Boolean
+                    elif isinstance(value, int):
+                        type = "integer"
+                    elif isinstance(value, float):
+                        instance_type = "number"
+                    elif isinstance(value, str):
+                        type = NodeType.String
+
                     # if it is in an array
                     if parent.type is NodeType.Array:
                         # print(f'pushing child into array object {parent}->{value}')
-                        node = self.create_new_node(NodeType.Value)
-                        node.add_value(value)
+                        node = self.create_new_node(type)
+                        node.set_value(value)
 
                     else:
                         # it is in an object
-                        node = self.create_new_node(NodeType.Value, pending_key)
-                        node.add_value(value)
+                        node = self.create_new_node(type, pending_key)
+                        node.set_value(value)
                         pending_key = None
 
                     self.pop()

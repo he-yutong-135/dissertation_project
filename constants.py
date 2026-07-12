@@ -1,9 +1,13 @@
 from enum import auto, StrEnum
 
 class NodeType(StrEnum):
-    Object = auto()
-    Array = auto()
-    Value = auto()
+    Object = "object"
+    Array = "array"
+    String = "string"
+    Number = "number"
+    Integer = "integer"
+    Boolean = "boolean"
+    Null = "null"
 
     def __repr__(self):
         return self.__str__()

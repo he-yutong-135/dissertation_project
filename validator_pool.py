@@ -1,5 +1,5 @@
 import re
-from constants import type_map
+from constants import type_map, NodeType
 
 def validate_minimum(value, min_val):
     if not is_number(value): return True # does not apply to non-numeric value
@@ -69,6 +69,13 @@ def validate_exclusive_maximum(value, exclusive_max):
     if not is_number(value): return True # does not apply to non-numeric value
     # if not is_number(exclusive_max): return False
     if float(value) >= exclusive_max:
+        return False
+    return True
+
+def validate_exclusive_minimum(value, exclusive_min):
+    if not is_number(value): return True # does not apply to non-numeric value
+    # if not is_number(exclusive_max): return False
+    if float(value) <= exclusive_min:
         return False
     return True
 
@@ -227,11 +234,85 @@ composition_validators = {
 
 composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref"]
 composition_keywords_lst = ["anyOf", "allOf", "oneOf"]
-child_schema_keywords = ["properties", "contains", "prefixItems"]
+
+
+array_keywords = [ "contains", "prefixItems", "items"]
+object_keywords = ["properties", "patternProperties", "additionalProperties"]
+child_schema_keywords = array_keywords + object_keywords
 
 child_schema_validators = {
     "properties": validate_allOf,
     "prefixItems": validate_allOf,
-    "contains": validate_anyOf
+    "contains": validate_anyOf,
+    "items": validate_allOf,
+    "patternProperties": validate_allOf,
+    "additionalProperties": validate_allOf
 }
 
+# key -> (type requirements, validation strategy)
+keyword_types = {
+    "$ref": (None, accept),
+    "$defs": (None, accept),
+    "$id": (None, accept),
+    "$schema": (None, accept),
+    "$anchor": (None, accept),
+    # "$dynamicRef": (None, accept),
+    # "$dynamicAnchor": (None, accept),
+    "$comment": (None, accept),
+    "title": (None, accept),
+    "description": (None, accept),
+    "default": (None, accept),
+    "examples": (None, accept),
+
+    # Generic validation
+    "type": (None, validate_types),
+    "const": (None, validate_const),
+    "enum": (None, validate_enum),
+
+    # Numeric
+    "minimum": ("number", validate_minimum),
+    "maximum": ("number", validate_maximum),
+    "exclusiveMinimum": ("number", validate_exclusive_minimum),
+    "exclusiveMaximum": ("number", validate_exclusive_maximum),
+    "multipleOf": ("number", validate_multiple_of),
+
+    # String
+    "minLength": ("string", validate_validate_minimum_len),
+    "maxLength": ("string", validate_validate_maximum_len),
+    "pattern": ("string", validate_pattern),
+    # "format": ("string", validate_format), # not yet supported
+
+    # Array
+    "items": ("array", None),
+    "prefixItems": ("array", None),
+    "contains": ("array", None),
+    "minItems": ("array", validate_minItems),
+    "maxItems": ("array", validate_maxItems),
+    "uniqueItems": ("array", validate_unique_items),
+
+    # Object
+    "properties": ("object", None),
+    "patternProperties": ("object", None),
+    "additionalProperties": ("object", None),
+    "required": ("object", validate_required),
+    "dependentRequired": ("object", validate_dependent_required),
+
+    # Composition
+    "allOf": (None, validate_allOf),
+    "anyOf": (None, validate_anyOf),
+    "oneOf": (None, validate_oneOf),
+    "not": (None, validate_not),
+    "if": (None, validate_if_then_else),
+    "then": (None, None),
+    "else": (None, None)
+}
+
+def is_type(my_type, expect_type):
+    if my_type is None:
+        raise ValueError('Every node should have a type!')
+    if expect_type is None:
+        return True # meaning no type requirements, applying to all types
+    if expect_type == "number":
+        return my_type in ["number", "integer"]
+    else:
+        return my_type == expect_type
