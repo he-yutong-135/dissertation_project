@@ -80,28 +80,6 @@ def raw_lexer(stream):
             yield ("RAW", read_value(c, stream))
 
 # read a JSON string
-# def read_string(char_stream: CharStream):
-#     buf = []
-
-#     while True:
-#         c = char_stream.get()
-
-#         if c == '':
-#             # raise ValueError("Unterminated string")
-#             return ''.join(buf[:-1])
-
-
-#         buf.append(c)
-
-#         if c == '\\':
-#             buf.append(char_stream.get())
-#             continue
-
-#         if c == '"':
-#             break
-
-#     return ''.join(buf[:-1])
-
 def read_string(char_stream: CharStream):
     buf = []
 
@@ -122,20 +100,31 @@ def read_string(char_stream: CharStream):
 
             # unicode escape: \uXXXX
             if esc == 'u':
-                hex_digits = []
+                hex_digits = ''.join(char_stream.get() for _ in range(4))
+                code = int(hex_digits, 16)
 
-                for _ in range(4):
-                    h = char_stream.get()
-                    if h == '':
-                        raise ValueError("Invalid unicode escape")
-                    hex_digits.append(h)
+                # high surrogate
+                if 0xD800 <= code <= 0xDBFF:
 
-                try:
-                    buf.append(chr(int(''.join(hex_digits), 16)))
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid unicode escape: \\u{''.join(hex_digits)}"
+                    if char_stream.get() != '\\' or char_stream.get() != 'u':
+                        raise ValueError("Expected low surrogate")
+
+                    low_hex = ''.join(char_stream.get() for _ in range(4))
+                    low = int(low_hex, 16)
+
+                    if not (0xDC00 <= low <= 0xDFFF):
+                        raise ValueError("Invalid low surrogate")
+
+                    code = (
+                        ((code - 0xD800) << 10)
+                        + (low - 0xDC00)
+                        + 0x10000
                     )
+
+                elif 0xDC00 <= code <= 0xDFFF:
+                    raise ValueError("Unexpected low surrogate")
+
+                buf.append(chr(code))
 
             else:
                 escape_map = {
@@ -181,10 +170,12 @@ def read_value(first_char:str, char_stream: CharStream):
     if raw_value == "null": return None
 
     try:
-        if "." in raw_value: return float(raw_value)
         return int(raw_value)
-    except:
-        raise ValueError(f"Unexpected value: {raw_value}")
+    except ValueError:
+        try:
+            return float(raw_value)
+        except ValueError:
+            raise ValueError(f"Unexpected value: {raw_value}")
 
 def normalize_key(s):
     return s.strip('"')
@@ -280,6 +271,7 @@ def token_stream(source):
 
     # for reading test data
     else:
+        print(json.dumps(source))
         yield from token_stream_from_stream(
             StringIO(json.dumps(source))
         )

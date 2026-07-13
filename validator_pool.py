@@ -14,6 +14,7 @@ def validate_maximum(value, max_val):
     return True
 
 def validate_enum(value, enum_list):
+    print(f'validate enum: {value} and {enum_list}')
     for item in enum_list:
         if value == item and type(value) == type(item):
             return True
@@ -26,8 +27,9 @@ def is_number(value):
     return validate_types(value, ['number', 'integer'])
 
 def validate_type(value, schema_type):
-    if value is None:
-        return schema_type in {"object", "array", "null"}
+    print(f'validate_type: {schema_type}')
+    # if value is None:
+    #     return schema_type in {"object", "array", "null"}
     
     python_type = type_map.get(schema_type, None)
     if not python_type:
@@ -39,6 +41,9 @@ def validate_type(value, schema_type):
     
     if schema_type == "number" and isinstance(value, bool):
         return False
+    
+    if schema_type == "integer" and isinstance(value, float):
+        return value.is_integer()
     
     return isinstance(value, python_type)
 
@@ -109,6 +114,8 @@ def validate_maxItems(value: list, maxNum):
     return len(value) <= maxNum
 
 def validate_unique_items(children, required):
+    children = [(type(c), c) for c in children]
+    print(f'unique items: {children}')
     if required:
         return len(set(children)) == len(children)
     return True
@@ -344,11 +351,11 @@ def validate_items(errors):
         i_prefix = prefixItems[i] if prefixItems else None
         if items:
             if isinstance(items, list):
-                i_items = items[i] if items else None
+                i_items = items[i]
             else:
                 i_items = items
         else:
-            i_items = True
+            i_items = False # default additionalProperties is true, meaning no error(which is represented by False)
 
         states[f'child({i})'] = {}
 

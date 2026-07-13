@@ -48,14 +48,17 @@ def get_fingerprint_obj(children: dict):
     items = []
     for k in sorted(children.keys()): # order does not affect equalization
         child = children[k] # child is guaranteed to be a primitive value
-        items.append((k, child))
+        items.append((k, get_fingerprint_value(child)))
 
     return hash(tuple(items))
 
 def get_fingerprint_arr(children: list):
     if children is None:
         return hash(None)
-    return hash(tuple(children))
+    return hash(tuple([get_fingerprint_value(v) for v in children]))
+
+def get_fingerprint_value(value):
+    return hash((type(value), value))
 
 WILDCARD = "*"
 

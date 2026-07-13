@@ -4,7 +4,7 @@ from error_log import ValidationResult, ValidationError, ErrorType, ValidationLo
 from validators import ValidationEngine
 from constants import NodeType, schema_file
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
-from constants import get_fingerprint_obj, get_fingerprint_arr, needs_log
+from constants import get_fingerprint_obj, get_fingerprint_arr, needs_log, get_fingerprint_value
 
 import gc
 
@@ -16,7 +16,7 @@ class Node:
         self.value = None # primitive only
         self.parent = None
         self.type = NodeType.Object # OBJECT / ARRAY / VALUE
-        self.children = None # dict or list
+        self.children = {} # dict or list
 
         self.my_schema_id_lst = [SchemaRef(0)]
         self.my_states = []
@@ -90,6 +90,8 @@ class Node:
         # if the node is of type Value, stores its value directly
         self.children[node.key] = node.value
 
+        print(f'remove child: {node} -> {self.children}')
+
         # print(len(self.children))
 
     def register_state(self, node):
@@ -109,8 +111,9 @@ class Engine():
         # set up stack
         self.stack = [Node('root')] # adding a dummy node to eliminate the need of boundary checking
 
-        self.schema_storage = build_schema(schema) if schema is not None else None
-        self.token_stream = token_stream(target) if target is not None else None
+        self.schema_storage = build_schema(schema)
+        # print(f'engine: {target}')
+        self.token_stream = token_stream(target)
         self.validators = ValidationEngine(self.schema_storage)
         self.circuit_breaker = CircuitBreaker(max_depth)
 
@@ -200,12 +203,14 @@ class Engine():
             node.parent.register_state(node)
             
     def verify_node(self, node: Node):
-        print(f'verify: {node}')
+        print(f'verify: {node}: {node.my_schema_id_lst}')
         
-        if len(node.my_schema_id_lst) == 0:
-            return
+        # if len(node.my_schema_id_lst) == 0:
+        #     return
         
         if node.type is NodeType.Object:
+            
+            node.set_value(get_fingerprint_obj(node.children))
             
             for schemas in node.my_schema_id_lst:
                 
@@ -222,12 +227,13 @@ class Engine():
                     # if schema is a boolean or ValidationState
                     node.my_states.append(schemas)
 
-                node.set_value(get_fingerprint_obj(node.children))
-
         elif node.type is NodeType.Array:
+            
+            node.set_value(get_fingerprint_arr(node.children.values()))  
             for schemas in node.my_schema_id_lst:
                 
                 if isinstance(schemas, tuple):
+                    validationRes = NodeValidationRes()
                     for schema_id in schemas:
                         if isinstance(schema_id, SchemaRef):
                             validationRes += self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states, node.type)
@@ -240,9 +246,11 @@ class Engine():
 
                 else:
                     # if schema is a boolean or ValidationState
-                    node.my_states.append(schemas)      
+                    node.my_states.append(schemas)    
 
-                node.set_value(get_fingerprint_arr(node.children.values()))
+            
+
+                
 
         else:
             for schemas in node.my_schema_id_lst:
@@ -259,9 +267,9 @@ class Engine():
                     # if schema is a boolean or ValidationState
                     node.my_states.append(schemas)
 
-        print(f'verify done: {node.my_states}')
-        print(f'node: {node.value} {node.type}')
-        print(f'verify node: {node.my_schema_id_lst}')
+        # print(f'verify done: {node.my_states}')
+        # print(f'node: {node.value} {node.type}')
+        # print(f'verify node: {node.my_schema_id_lst}')
 
 
     def create_new_node(self, type, key=None):
@@ -280,10 +288,9 @@ class Engine():
         pending_key = None
         try:
             if self.token_stream is None:
-                return
+                print('no tokens')
             
             for token in self.token_stream:
-                print(f'token: {token}')
                 if token.is_start_object():
                     if pending_key is None and len(self.stack) == 1:
                         key = 'top_object'

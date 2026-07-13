@@ -244,7 +244,7 @@ class ValidationLog():
         self.log_print.append(f'(maximum stack depth: {depth})')
         self.log_print.append('--- validation done ---')
         if self.log_file:
-            with open(self.log_file, 'w') as f:
+            with open(self.log_file, 'w', encoding='utf-8') as f:
                 for log in self.log_print:
                     f.write(log)
                     f.write('\n')

@@ -1,4 +1,4 @@
-from constants import Cursor, needs_log, ValidationState
+from constants import Cursor, needs_log, ValidationState, get_fingerprint_arr, get_fingerprint_obj
 from error_log import ErrorType, ValidationError, ValidationResult, ValidationResNoLog
 from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, is_schema_ref
 from validator_pool import keyword_types, is_type, composition_validators, composition_keywords, child_schema_keywords, keyword_groups
@@ -25,6 +25,8 @@ class ValidationEngine():
         if not isinstance(schema_ref, SchemaRef):
             return
         schema = self.get_schema(schema_ref.value())
+
+        # update $ref
         ref_path = schema.schemas.get('$ref', None)
         # if it has been updated, no need to update again
         if isinstance(ref_path, SchemaRef):
@@ -33,6 +35,26 @@ class ValidationEngine():
             def_schema = self.find_schema(ref_path)
             schema.schemas['$ref'] = def_schema
             # print(f'updating schema: $ref -> {def_schema}')
+
+        # update const
+        const_value = schema.schemas.get('const', None)
+        if const_value:
+            if isinstance(const_value, list) or isinstance(const_value, SchemaRef):
+                schema.schemas['const'] = self.calculate_const_value(const_value)
+
+            print(f'update const: {schema.schemas['const']}')
+
+    def calculate_const_value(self, const_value):
+        if isinstance(const_value, list):
+            const_value = [self.calculate_const_value(val) for val in const_value]
+            return get_fingerprint_arr(const_value)
+        elif isinstance(const_value, SchemaRef):
+            const_dict = const_value.follow().content()
+            const_dict = {k: self.calculate_const_value(v) for k, v in const_dict.items()}
+            return get_fingerprint_obj(const_dict)
+        else:
+            return const_value
+
 
     def find_schema(self, path):
         paths = path.split('/')
@@ -66,6 +88,9 @@ class ValidationEngine():
         if schema_id == REJECT_NODE.id:
             return NodeValidationRes(ValidationError(ErrorType.UNEXPECTED, {'value': value}), schema_id=schema_id)
         
+        if isinstance(schema_id, bool) or isinstance(schema_id, ValidationError):
+            return schema_id
+        
         errors = {}
         current_schema = self.get_schema(schema_id)
         print(f'validating with {current_schema}, {value}, {children_state}')
@@ -73,6 +98,7 @@ class ValidationEngine():
             
             
             # obtain type requirements and validation function
+            print(f'key: {key}: {param}')
             type_requirments, func = keyword_types.get(key)
             print(f'key: {key}: {param}, key requirements: {type_requirments}, my type: {my_type}')
 
@@ -109,16 +135,13 @@ class ValidationEngine():
                 # whether it is valid is determined later during compressing 
                     errors[key] = child_validation_results 
 
-
-            elif key == 'dependentRequired': 
-                param = param.follow().content()
             elif key is None:
                 if  not param:
                 #     errors[key] = ValidationError()
                 # else:
                     errors[key] = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {param}'}})
 
-            elif is_schema_ref(param) and key != "$defs":
+            elif is_schema_ref(param) and key not in ["$defs", "dependentRequired"]:
                 next_schema_id = param.value()
                 errors[key] = self.validate_schema(next_schema_id, value, children_state, idx=idx)
 
@@ -138,6 +161,13 @@ class ValidationEngine():
 
             
             else:
+                if key == 'const':
+                    if isinstance(value, dict): value = get_fingerprint_obj(value)
+                    if isinstance(value, list): value = get_fingerprint_arr(value)
+                    print(f'const: {value}')
+                if key == 'dependentRequired': 
+                    param = param.follow().content()
+
                 print(f'validating {key} with value: {value} and param: {param}')
                 
                 if not func:
@@ -251,7 +281,7 @@ class ValidationEngine():
         #     return None
         schema_ids = []
         schema_lst = schema_lst if isinstance(schema_lst, list) else [schema_lst]
-        # print(f'collect_schemas_for_me from {schema_lst}, My info: {my_key}, {my_type}')
+        print(f'collect_schemas_for_me from {schema_lst}, My info: {my_key}, {my_type}')
 
         for schema_tuple in schema_lst:
             key, schema = schema_tuple
@@ -276,7 +306,13 @@ class ValidationEngine():
                     print(my_key)
                     print(repr(my_key))
                     for k, v in schema.items():
+                        print("pattern:", repr(k))
                         if re.search(k, my_key):
+                            if isinstance(v, bool):
+                                if not v:
+                                    v = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {schema_ref}'}})
+                                else:
+                                    v = False
                             matches.append(v)
                     # print(f'patternProperties matches: {matches}')
                     if len(matches) > 0:
@@ -285,13 +321,16 @@ class ValidationEngine():
                 else:
                     # properties or prefixItems
                     schema_ref = schema.get(my_key, None)
+                    print(f'key: {my_key}, properties: {schema_ref}')
 
                     # sometimes schema provides a boolean indicating if it is valid or not
                     if isinstance(schema_ref, bool):
                         if not schema_ref:
                         #    schema_ref = ValidationError()
                         # else:
-                            schema_ref = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{k}: {v}'}})
+                            schema_ref = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {schema_ref}'}})
+                        else:
+                            schema_ref = False
 
                 # if there are matches
                 if schema_ref is not None:
