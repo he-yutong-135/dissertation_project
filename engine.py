@@ -117,7 +117,7 @@ class Engine():
         self.current_node = self.stack[0]
 
     def push(self, node):
-        print(f'push: stack: {len(self.stack)}, parent children: {node.parent.children}')
+        # print(f'push: stack: {len(self.stack)}, parent children: {node.parent.children}')
 
         # print(len(self.stack))
         # bind the node with its schema
@@ -128,7 +128,7 @@ class Engine():
         # if not isinstance(node.my_schema_id_lst, list): 
         #     print(node)
         #     print(node.my_schema_id_lst)
-        print(f'push: find schema for {node}: {node.my_schema_id_lst}')
+        # print(f'push: find schema for {node}: {node.my_schema_id_lst}')
         node.children_schema_id_lst = self.validators.collect_schemas_for_children(node.my_schema_id_lst, node.type)
 
         # multiple schemas
@@ -140,6 +140,8 @@ class Engine():
         self.stack.append(node)
         self.circuit_breaker.on_push()
 
+        print(f'push: {node}')
+
 
     def pop(self):
         # print(f'pop: {len(self.stack)}')
@@ -150,7 +152,7 @@ class Engine():
             raise ValueError('standalone node')
         # print('----------------')
         # print(f'pop node: {node}')
-        print(f'pop: {node.get_path()}')
+        # print(f'pop: {node.get_path()}')
         # print(f'my content: {node.content()}')
         self.verify_node(node)
 
@@ -167,12 +169,6 @@ class Engine():
 
         # print(f'pop: stack: {len(self.stack)}, parent children: {node.parent.children}')
         node.parent = None # break the reference to its parent 
-        
-        
-        node.my_states = None
-        node.child_states = None 
-        
-
         # refs = gc.get_referrers(node.my_states)
 
         # print(len(refs))
@@ -198,34 +194,79 @@ class Engine():
                     s += unclose_error
 
             for i in range(len(node.my_schema_id_lst)):
-                if node.my_states[i]:
+                if bool(node.my_states[i]):
                     self.logs.add_log(node.my_states[i], node.get_path(), str(node))
 
             node.parent.register_state(node)
             
     def verify_node(self, node: Node):
-        print(f'node: {node.value} {node.type}')
-        print(f'verify node: {node.my_schema_id_lst}')
+        print(f'verify: {node}')
+        
         if len(node.my_schema_id_lst) == 0:
             return
         
         if node.type is NodeType.Object:
-            for schema_id in node.my_schema_id_lst:
-                node.my_states.append(self.validators.validate_schema(schema_id, node.children, node.child_states, node.type))
+            
+            for schemas in node.my_schema_id_lst:
+                
+                if isinstance(schemas, tuple):
+                    validationRes = NodeValidationRes()
+                    for schema_id in schemas:
+                        validationRes += self.validators.validate_schema(schema_id, node.children, node.child_states, node.type)
+                    node.my_states.append(validationRes)  
+
+                elif isinstance(schemas, SchemaRef):
+                    node.my_states.append(self.validators.validate_schema(schemas, node.children, node.child_states, node.type))
+
+                else:
+                    # if schema is a boolean or ValidationState
+                    node.my_states.append(schemas)
+
                 node.set_value(get_fingerprint_obj(node.children))
 
         elif node.type is NodeType.Array:
-            for schema_id in node.my_schema_id_lst:
-                node.my_states.append(self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states, my_type=node.type))
+            for schemas in node.my_schema_id_lst:
+                
+                if isinstance(schemas, tuple):
+                    for schema_id in schemas:
+                        if isinstance(schema_id, SchemaRef):
+                            validationRes += self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states, node.type)
+                        else:
+                            validationRes += schema_id # bool
+                    node.my_states.append(validationRes)  
+
+                elif isinstance(schemas, SchemaRef):
+                    node.my_states.append(self.validators.validate_schema(schemas, list(node.children.values()), node.child_states, my_type=node.type))
+
+                else:
+                    # if schema is a boolean or ValidationState
+                    node.my_states.append(schemas)      
+
                 node.set_value(get_fingerprint_arr(node.children.values()))
 
         else:
-            for schema_id in node.my_schema_id_lst:
-                node.my_states.append(self.validators.validate_schema(schema_id, node.value, my_type=node.type))
+            for schemas in node.my_schema_id_lst:
+                if isinstance(schemas, tuple):
+                    validationRes = NodeValidationRes()
+                    for schema_id in schemas:
+                        validationRes += self.validators.validate_schema(schema_id, node.value, my_type=node.type)
+                    node.my_states.append(validationRes)  
+
+                elif isinstance(schemas, SchemaRef):
+                    node.my_states.append(self.validators.validate_schema(schemas, node.value, my_type=node.type))
+
+                else:
+                    # if schema is a boolean or ValidationState
+                    node.my_states.append(schemas)
+
+        print(f'verify done: {node.my_states}')
+        print(f'node: {node.value} {node.type}')
+        print(f'verify node: {node.my_schema_id_lst}')
 
 
     def create_new_node(self, type, key=None):
-        node = Node(key)
+        if key: node = Node(key)
+        else: node = Node(type)
         node.type = type
         node.parent = self.current_node
         
@@ -242,7 +283,7 @@ class Engine():
                 return
             
             for token in self.token_stream:
-                # print(f'token: {token}')
+                print(f'token: {token}')
                 if token.is_start_object():
                     if pending_key is None and len(self.stack) == 1:
                         key = 'top_object'
@@ -281,11 +322,13 @@ class Engine():
                     elif isinstance(value, bool):
                         type = NodeType.Boolean
                     elif isinstance(value, int):
-                        type = "integer"
+                        type = NodeType.Integer
                     elif isinstance(value, float):
-                        instance_type = "number"
+                        type = NodeType.Number
                     elif isinstance(value, str):
                         type = NodeType.String
+
+                    
 
                     # if it is in an array
                     if parent.type is NodeType.Array:
@@ -309,18 +352,18 @@ class Engine():
             self.logs.add_log(NodeValidationRes(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
                               'circuit_breaker'))
             
-        # except Exception as e:
-        #     print(f'error! {e}')
+        except Exception as e:
+            print(f'error! {e}')
         finally:
             self.logs.report(self.circuit_breaker.max_recorded_depth)
             top_obj_state = self.stack[0]
             
             
-            # if len(top_obj_state.child_states[0]) == 0:
-            #     return False, "valid"
-            # else:
-            #     # print(bool(top_obj_state.child_states[0][0]))
-            #     return bool(top_obj_state.child_states[0][0]), top_obj_state.child_states[0][0].state()
+            if len(top_obj_state.child_states[0]) == 0:
+                return False, "valid"
+            else:
+                # print(bool(top_obj_state.child_states[0][0]))
+                return bool(top_obj_state.child_states[0][0]), top_obj_state.child_states[0][0].state()
 
 if __name__ == '__main__':
     engine = Engine(schema=schema_file, target='data_unclosed_error.json', log_file_name='validation_log.txt', max_depth=10)

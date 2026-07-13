@@ -9,6 +9,7 @@ class ErrorType(StrEnum):
     SCHEMA_ERROR = "<SCHEMA ERROR>"
     DEPTH_ERROR = "<DEPTH ERROR>"
     COMPOSITION_ERROR = "<COMPOSITION ERROR>"
+    DETERMINED_ERROR = "<DETERMINED ERROR>"
     # for test
     NO_ERROR = "<NO ERROR>"
 
@@ -40,6 +41,10 @@ ERROR_TEMPLATES = {
     ErrorType.COMPOSITION_ERROR: {
         "template": "violates composite schema[{rule}], branch states: [{states}]",
         "keywords": ["rule", "states"]
+    },
+    ErrorType.DETERMINED_ERROR: {
+        "template": "schema determined error, schema: {schema}",
+        "keywords": ["schema"]
     },
     ErrorType.NO_ERROR: {
         "template": "valid",
@@ -73,9 +78,13 @@ class ValidationResNoLog():
     def __iadd__(self, other):
         if self: return self # already an error
         if isinstance(other, list):
-            for result in other and result:
-                self.set_state(True)
+            for result in other:
+                if result:
+                    self.set_state(True)
         # elif isinstance(other, ValidationError) and other:
+        # elif isinstance(other, bool):
+        #     # when only a bool provided, false means invalid, true means invalid
+        #     if not other: self.set_state(True)
         elif isinstance(other, ValidationError) and other:
             self.set_state(True)
         elif isinstance(other, ValidationResult) and other:
@@ -141,9 +150,13 @@ class ValidationResult():
     # only add real errors
     def add(self, other):
         if isinstance(other, list):
-            for result in other and result:
-                self.add(result) 
+            for result in other: 
+                if result:
+                    self.add(result) 
         # elif isinstance(other, ValidationError) and other:
+        # elif isinstance(other, bool):
+        #     # when only a bool provided, false means invalid, true means invalid
+        #     if not other: self.errors.append(ValidationError(ErrorType.DETERMINED_ERROR))
         elif isinstance(other, ValidationError) and other:
             self.errors.append(other)
         elif isinstance(other, ValidationResult) and other:

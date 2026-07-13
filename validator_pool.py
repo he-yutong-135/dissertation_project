@@ -1,5 +1,5 @@
 import re
-from constants import type_map, NodeType
+from constants import type_map, ValidationState
 
 def validate_minimum(value, min_val):
     if not is_number(value): return True # does not apply to non-numeric value
@@ -127,9 +127,10 @@ def validate_dependent_required(children, dependentRequired):
     return True
 
 def validate_required(children, required):
+    print(f'validate_required: {children}, {required}')
     if not isinstance(children, dict):
         return True
-    # print(f'validate_required: {children}, {required}')
+    
     keys = children.keys() if children else []
     for item in required:
         if item not in keys:
@@ -173,6 +174,7 @@ validator_storage = {
 }
 
 def validate_anyOf(res_lst: list):
+    
     res_lst = res_lst if isinstance(res_lst, list) else [res_lst]
     for res in res_lst:
         if not res or res is None: # if one branch is valid
@@ -180,6 +182,7 @@ def validate_anyOf(res_lst: list):
     return False
 
 def validate_allOf(res_lst: list):
+    print(res_lst)
     res_lst = res_lst if isinstance(res_lst, list) else [res_lst]
     for res in res_lst:
         if res or  res is None: # if one branch is invalid
@@ -208,19 +211,7 @@ def validate_ref(res):
     else:
         return False # invalid
     
-def validate_if_then_else(errors: dict):
-    # default to be False, which means no error
-    if_value = errors.get('if', False)
-    then_value = errors.get('then', False)
-    else_value = errors.get('else', False)
-    
-    states = {'if': 'invalid' if if_value else 'valid',
-               'then': 'invalid' if then_value else 'valid', 
-               'else': 'invalid' if else_value else 'valid'}
-    if not if_value: # if no error
-        return not bool(then_value), states
-    if if_value:
-        return not bool(else_value), states
+
 
 # composition handlers
 composition_validators = {
@@ -229,7 +220,7 @@ composition_validators = {
     "oneOf": validate_oneOf,
     "not": validate_not,
     "$ref": validate_ref,
-    "if_then_else": validate_if_then_else
+    # "if_then_else": validate_if_then_else
 }
 
 composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref"]
@@ -237,7 +228,7 @@ composition_keywords_lst = ["anyOf", "allOf", "oneOf"]
 
 
 array_keywords = [ "contains", "prefixItems", "items"]
-object_keywords = ["properties", "patternProperties", "additionalProperties"]
+object_keywords = ["properties", "patternProperties", "additionalProperties", 'propertyNames']
 child_schema_keywords = array_keywords + object_keywords
 
 child_schema_validators = {
@@ -249,8 +240,154 @@ child_schema_validators = {
     "additionalProperties": validate_allOf
 }
 
+keyword_groups = ['if_then_else', 'property_group', 'item_group']
+def validate_if_then_else(errors: dict):
+    # default to be False, which means no error
+    if_value = errors.pop('if', False)
+    then_value = errors.pop('then', False)
+    else_value = errors.pop('else', False)
+    
+    states = {'if': 'invalid' if if_value else 'valid',
+               'then': 'invalid' if then_value else 'valid', 
+               'else': 'invalid' if else_value else 'valid'}
+    if not if_value: # if no error
+        return not bool(then_value), states
+    if if_value:
+        return not bool(else_value), states
+    
+
+def validate_properties(errors):
+    print(f'validate_properties: {errors}')
+    cnt = 0
+    properties = errors.pop('properties', None)
+    patternProperties = errors.pop('patternProperties', None)
+    additional = errors.pop('additionalProperties', None)
+    # print(f'validate_properties additional: {additional}')
+
+    if properties is not None: cnt = len(properties)
+    elif patternProperties is not None: cnt = len(patternProperties)
+    elif additional is not None: cnt = len(additional)
+    else:
+        return True, {}
+
+    states = {}
+    result = True
+
+    # iterate through all children one by one
+    for i in range(cnt):
+        matched = False
+        i_properties = properties[i] if properties else None
+        i_patternProperties = patternProperties[i] if patternProperties else None
+        if additional:
+            if isinstance(additional, list):
+                i_additional = additional[i]
+            else:
+                i_additional = additional
+        else:
+            i_additional = False # default additionalProperties is true, meaning no error
+
+        states[f'child({i})'] = {}
+
+        properties_info = None
+        if i_properties is not None:
+            properties_info = 'no match'
+            if i_properties is not ValidationState.NoMatch:
+                
+                matched = True
+                if bool(i_properties):
+                    properties_info = 'invalid'
+                    result = False
+                else:
+                    properties_info = 'valid'
+        if properties_info is not None:
+            states[f'child({i})']['properties'] = properties_info
+
+        pattern_info = None
+        if i_patternProperties is not None:
+            pattern_info = 'no match'
+            if i_patternProperties is not ValidationState.NoMatch:
+                matched = True
+                if bool(i_patternProperties):
+                    pattern_info = 'invalid'
+                    result = False
+                else:
+                    pattern_info = 'valid'
+        if pattern_info is not None:
+            states[f'child({i})']['patternProperties'] = pattern_info
+
+        additional_info = 'valid'
+        if bool(i_additional): 
+            additional_info = 'invalid'
+        if not matched:
+            if bool(i_additional): 
+                result = False
+                additional_info = 'invalid'
+
+        states[f'child({i})']['additionalProperties'] = additional_info
+
+    return result, states
+
+def validate_items(errors):
+    # print(f'validate_items: {errors}')
+    prefixItems = errors.pop('prefixItems', None)
+    items = errors.pop('items', None)
+    cnt = 0
+
+    if prefixItems is not None: cnt = len(prefixItems)
+    elif items is not None: cnt = len(items)
+    else: return True, {}
+
+    result = True
+    states = {}
+
+    for i in range(cnt):
+        i_prefix = prefixItems[i] if prefixItems else None
+        if items:
+            if isinstance(items, list):
+                i_items = items[i] if items else None
+            else:
+                i_items = items
+        else:
+            i_items = True
+
+        states[f'child({i})'] = {}
+
+        matched = False
+
+        prefix_info = None
+        if i_prefix is not None:
+            prefix_info = 'no match'
+            if i_prefix is not ValidationState.NoMatch:
+                matched = True
+                if bool(i_prefix):
+                    prefix_info = 'invalid'
+                    result = False
+                else:
+                    prefix_info = 'valid'
+
+        items_info = None
+        if i_items is not None and not matched:
+            if bool(i_items):
+                items_info = 'invalid'
+                result = False
+            else:
+                items_info = 'valid'
+
+        if prefix_info is not None: 
+            states[f'child({i})']['prefixItems'] = prefix_info
+        if items is not None:
+            states[f'child({i})']['items'] = items_info
+
+    # print(f'validate_items: {states}')
+    # print(f'validate_items result: {result}')
+
+    return result, states
+
+# def validate_propertyNames()
+
 # key -> (type requirements, validation strategy)
 keyword_types = {
+    None: (None, accept),
     "$ref": (None, accept),
     "$defs": (None, accept),
     "$id": (None, accept),
@@ -283,6 +420,7 @@ keyword_types = {
     # "format": ("string", validate_format), # not yet supported
 
     # Array
+    "item_group": ("array", validate_items), # added
     "items": ("array", None),
     "prefixItems": ("array", None),
     "contains": ("array", None),
@@ -291,17 +429,21 @@ keyword_types = {
     "uniqueItems": ("array", validate_unique_items),
 
     # Object
+    "property_group": ("object", validate_properties), # added
     "properties": ("object", None),
     "patternProperties": ("object", None),
     "additionalProperties": ("object", None),
     "required": ("object", validate_required),
     "dependentRequired": ("object", validate_dependent_required),
+    "propertyNames": ("Not implemented", None), # not implemented
+    "dependentSchemas": ("Not implemented", None), # not implemented
 
     # Composition
     "allOf": (None, validate_allOf),
     "anyOf": (None, validate_anyOf),
     "oneOf": (None, validate_oneOf),
     "not": (None, validate_not),
+    'if_then_else': (None, validate_if_then_else), # added
     "if": (None, validate_if_then_else),
     "then": (None, None),
     "else": (None, None)

@@ -80,6 +80,28 @@ def raw_lexer(stream):
             yield ("RAW", read_value(c, stream))
 
 # read a JSON string
+# def read_string(char_stream: CharStream):
+#     buf = []
+
+#     while True:
+#         c = char_stream.get()
+
+#         if c == '':
+#             # raise ValueError("Unterminated string")
+#             return ''.join(buf[:-1])
+
+
+#         buf.append(c)
+
+#         if c == '\\':
+#             buf.append(char_stream.get())
+#             continue
+
+#         if c == '"':
+#             break
+
+#     return ''.join(buf[:-1])
+
 def read_string(char_stream: CharStream):
     buf = []
 
@@ -87,20 +109,55 @@ def read_string(char_stream: CharStream):
         c = char_stream.get()
 
         if c == '':
-            # raise ValueError("Unterminated string")
-            return ''.join(buf[:-1])
-
-
-        buf.append(c)
-
-        if c == '\\':
-            buf.append(char_stream.get())
-            continue
+            raise ValueError("Unterminated string")
 
         if c == '"':
             break
 
-    return ''.join(buf[:-1])
+        if c == '\\':
+            esc = char_stream.get()
+
+            if esc == '':
+                raise ValueError("Unterminated escape sequence")
+
+            # unicode escape: \uXXXX
+            if esc == 'u':
+                hex_digits = []
+
+                for _ in range(4):
+                    h = char_stream.get()
+                    if h == '':
+                        raise ValueError("Invalid unicode escape")
+                    hex_digits.append(h)
+
+                try:
+                    buf.append(chr(int(''.join(hex_digits), 16)))
+                except ValueError:
+                    raise ValueError(
+                        f"Invalid unicode escape: \\u{''.join(hex_digits)}"
+                    )
+
+            else:
+                escape_map = {
+                    '"': '"',
+                    '\\': '\\',
+                    '/': '/',
+                    'b': '\b',
+                    'f': '\f',
+                    'n': '\n',
+                    'r': '\r',
+                    't': '\t',
+                }
+
+                if esc not in escape_map:
+                    raise ValueError(f"Invalid escape character: \\{esc}")
+
+                buf.append(escape_map[esc])
+
+        else:
+            buf.append(c)
+
+    return ''.join(buf)
 
 # read a JSON raw value (number, true, false, null) 
 def read_value(first_char:str, char_stream: CharStream):
@@ -215,12 +272,6 @@ def token_gen(tokens):
 def token_stream_from_stream(stream):
     char_stream = CharStream(stream)
     yield from token_gen(raw_lexer(char_stream))
-        
-# def token_stream(file_name):
-#     with open(file_name, 'r') as f:
-#         char_stream = CharStream(f)
-#         for token in token_gen(raw_lexer(char_stream)):
-#             yield token
 
 def token_stream(source):
     if isinstance(source, Path):

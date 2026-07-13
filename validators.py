@@ -1,8 +1,9 @@
-from constants import NodeType
-from constants import Cursor, needs_log
+from constants import Cursor, needs_log, ValidationState
 from error_log import ErrorType, ValidationError, ValidationResult, ValidationResNoLog
 from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, is_schema_ref
-from validator_pool import keyword_types, is_type, composition_validators, composition_keywords, child_schema_keywords, child_schema_validators
+from validator_pool import keyword_types, is_type, composition_validators, composition_keywords, child_schema_keywords, keyword_groups
+
+import re
 
 NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
 
@@ -20,6 +21,9 @@ class ValidationEngine():
     
     # ref has to be parsed after all schema is parsed, thus I delay this functionality to schema binding stage
     def update_schema(self, schema_ref):
+        # if not a reference provided, skip updating
+        if not isinstance(schema_ref, SchemaRef):
+            return
         schema = self.get_schema(schema_ref.value())
         ref_path = schema.schemas.get('$ref', None)
         # if it has been updated, no need to update again
@@ -64,11 +68,13 @@ class ValidationEngine():
         
         errors = {}
         current_schema = self.get_schema(schema_id)
-        # print(f'validating with {current_schema}')
+        print(f'validating with {current_schema}, {value}, {children_state}')
         for key, param in current_schema.schemas.items():
+            
             
             # obtain type requirements and validation function
             type_requirments, func = keyword_types.get(key)
+            print(f'key: {key}: {param}, key requirements: {type_requirments}, my type: {my_type}')
 
             # schema only applies to the node that matches its type requirements
             if not is_type(my_type, type_requirments):
@@ -80,26 +86,41 @@ class ValidationEngine():
             if key in child_schema_keywords: 
                 # print(f'all states: {children_state}, state idx: {idx.value()}')
                 
-                validationResult = NodeValidationRes(schema_id=schema_id)
+                # validationResult = NodeValidationRes(schema_id=schema_id)
                 # it consumes one schema result
-                # print(children_state)
-                child_validation_results = children_state[idx.value()] # a list
-                idx.increase()
+                # print(f'key: {key}: {param}')
+                if isinstance(param, bool):
+                    
+                    if not bool(param):
+                        # errors[key] = ValidationError()
+                    # else:
+                        errors[key] = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {param}'}})
+                        print(f'key: {key}: {param} -> {errors[key]}')
+                    
+                else:
+                    child_validation_results = children_state[idx.value()] # a list
+                    idx.increase()
 
-                print(f'child_schema_validators: {key}')
-                res = child_schema_validators.get(key)(child_validation_results)
-                if not res:
-                    validationResult += ValidationError(ErrorType.INCOMPLETE, {'rule': key, 'schema_id': param, "value": value})
+                # res = child_schema_validators.get(key)(child_validation_results)
+                # if not res:
+                #     validationResult += ValidationError(ErrorType.INCOMPLETE, {'rule': key, 'schema_id': param, "value": value})
 
-                errors[key] = validationResult
+                # record the results of all children 
+                # whether it is valid is determined later during compressing 
+                    errors[key] = child_validation_results 
 
 
             elif key == 'dependentRequired': 
                 param = param.follow().content()
+            elif key is None:
+                if  not param:
+                #     errors[key] = ValidationError()
+                # else:
+                    errors[key] = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {param}'}})
 
             elif is_schema_ref(param) and key != "$defs":
                 next_schema_id = param.value()
-                errors[key] = self.validate_schema(next_schema_id, value, children_state, idx)
+                errors[key] = self.validate_schema(next_schema_id, value, children_state, idx=idx)
 
             elif isinstance(param, list) and key in ["anyOf", "allOf", "oneOf"]:
                 errors[key] = list()
@@ -112,10 +133,12 @@ class ValidationEngine():
                     else:
                         next_schema_id = ref.value() 
                     # print(f'validating {key} with value: {value} and param: {param}')
-                    errors[key].append(self.validate_schema(next_schema_id, value, children_state,idx))
+                    errors[key].append(self.validate_schema(next_schema_id, value, children_state,idx=idx, my_type=my_type))
                     # print(f'validation result for {key}: {errors[key]}')
+
+            
             else:
-                # print(f'validating {key} with value: {value} and param: {param}')
+                print(f'validating {key} with value: {value} and param: {param}')
                 
                 if not func:
                     errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param})'})
@@ -123,10 +146,13 @@ class ValidationEngine():
                     
                     errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
 
+        # print(f'validating schema, error result {errors}')
+
         error = self.compress_errors(errors, schema_id)
         return error
     
     def compress_errors(self, errors, schema_id):
+        print(f'compress: {errors}')
         if isinstance(errors, NodeValidationRes): 
             return errors
         
@@ -142,19 +168,24 @@ class ValidationEngine():
             
         result = NodeValidationRes(schema_id=schema_id)
         if isinstance(errors, dict):
+            # validating dependent keywords
+            # if-then-else
+            for group in keyword_groups: 
+                _, func = keyword_types.get(group)
+
+                res, states = func(errors)
+                if not res:
+                    result += ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": group, "states": states})
+
             for k, v in errors.items():
                 # if k in ['items', 'additionalProperties']:
                 #     errors[k] = ValidationError(ErrorType.NO_ERROR)
                 # else:
                 errors[k] = self.compress_errors(v, schema_id)
-            if 'if' in errors.keys():
-                res, states = composition_validators.get('if_then_else')(errors)
-                if not res:
-                    result += ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": "if-then-else", "states": states})
 
             for k, v in errors.items():
                 
-                if k in ['if', 'then', 'else']: continue # they are processed
+                # if k in ['if', 'then', 'else']: continue # they are processed
                 res_lst = v if isinstance(v, list) else [v]
                 res_states = [res.state() for res in res_lst]
                 
@@ -173,12 +204,16 @@ class ValidationEngine():
         extra_schemas = []
         schema_lst = schema_lst if isinstance(schema_lst, list) else [schema_lst]
 
-        print(f'collect_schemas_for_my_children: {parent_type} from {schema_lst}')
-
         for schema_id in schema_lst:
+            
+            if not isinstance(schema_id, SchemaRef):
+                continue
+
             schema = self.get_schema(schema_id)
 
             for k, v in schema.content().items():
+                # print(f'collect_schemas_for_my_children: {parent_type} from {schema.content()}')
+                # print(f'collect_schemas_for_children: {k}')
                 type_requirements, _ = keyword_types.get(k)
 
                 # only record the schema that can be applied on this node
@@ -189,7 +224,7 @@ class ValidationEngine():
                     if isinstance(v, bool):
                         continue # its result is determined, no need for validation
 
-                    if k == 'properties':
+                    if k == 'properties' or k == 'patternProperties':
                         extra_schemas.append((k, v.follow().content())) # store a dict 
                     elif k == 'prefixItems':
                         schema_dict = dict(enumerate(v))
@@ -199,15 +234,16 @@ class ValidationEngine():
                         extra_schemas.append((k, v))
                     
                 elif k in composition_keywords:
+                    # print(f'composition_keywords: {k}: {v}')
                     v = v if isinstance(v, list) else [v]
                     for ref in v:
                         if isinstance(ref, bool):
                             continue # its result is determined, no need for validation
                         else:
-                            next_schema_id = ref.value()
-                            extra_schemas += self.collect_schemas_for_children(next_schema_id)
+                            extra_schemas += self.collect_schemas_for_children(ref, parent_type)
+                            print(f'next: {ref} -> {extra_schemas}')
 
-        print(f'collects: {extra_schemas} for children')
+        # print(f'collects: {extra_schemas} for children')
         return extra_schemas
     
     def collect_schemas_for_me(self, schema_lst, my_key, my_type):
@@ -215,7 +251,7 @@ class ValidationEngine():
         #     return None
         schema_ids = []
         schema_lst = schema_lst if isinstance(schema_lst, list) else [schema_lst]
-        print(f'collect_schemas_for_me from {schema_lst}, My info: {my_key}, {my_type}')
+        # print(f'collect_schemas_for_me from {schema_lst}, My info: {my_key}, {my_type}')
 
         for schema_tuple in schema_lst:
             key, schema = schema_tuple
@@ -226,24 +262,55 @@ class ValidationEngine():
             #     continue # schema with bool as parameter does not need validation
 
             # a schema reference means a schema must be satisfied 
+            schema_ref = None
             if isinstance(schema, SchemaRef): 
                 self.update_schema(schema)
                 schema_ids.append(schema)
 
             # use key to find the schema (object uses key, array uses index)
             elif isinstance(schema, dict):
-                schema_ref = schema.get(my_key, None)
-                if schema_ref:
-                    self.update_schema(schema_ref)
+                # pattern properties 
+                if key == 'patternProperties':
+                    matches = []
+                    # print(f'collect_schemas_for_me patternProperties: {schema}, key: {my_key}')
+                    print(my_key)
+                    print(repr(my_key))
+                    for k, v in schema.items():
+                        if re.search(k, my_key):
+                            matches.append(v)
+                    # print(f'patternProperties matches: {matches}')
+                    if len(matches) > 0:
+                        schema_ref = tuple(matches)
+                    print(f'patternProperties matches: {schema_ref}: {type(schema_ref)}')
+                else:
+                    # properties or prefixItems
+                    schema_ref = schema.get(my_key, None)
+
+                    # sometimes schema provides a boolean indicating if it is valid or not
+                    if isinstance(schema_ref, bool):
+                        if not schema_ref:
+                        #    schema_ref = ValidationError()
+                        # else:
+                            schema_ref = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{k}: {v}'}})
+
+                # if there are matches
+                if schema_ref is not None:
+                    if isinstance(schema_ref, SchemaRef):
+                        self.update_schema(schema_ref)
+                    elif isinstance(schema_ref, tuple):
+                        for id in schema_ref:
+                            self.update_schema(id)
                     schema_ids.append(schema_ref)
                 else:
-                    # no match found, considered as an error
-                    schema_ids.append(REJECT_NODE.id)
+                    # no match found, use no match to indicate this result
+                    schema_ids.append(ValidationState.NoMatch)
+
+                print(f'returns {schema_ids}')
             else:
 
                 raise Exception(f'unexpected schema lst provided: {schema_lst}')
             
-        print(f'collects: {schema_ids}')
+        # print(f'collects: {schema_ids}')
             
         assert len(schema_lst) == len(schema_ids)
         return schema_ids

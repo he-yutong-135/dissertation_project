@@ -17,6 +17,11 @@ class SchemaType(StrEnum):
     VALUE = auto()
     COMPILE = auto()
 
+class ValidationState(StrEnum):
+    NoMatch = 'No Match'
+    def __bool__(self):
+        return False
+
 class Cursor:
     def __init__(self):
         self.idx = 0
