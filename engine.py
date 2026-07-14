@@ -111,10 +111,10 @@ class Engine():
         # set up stack
         self.stack = [Node('root')] # adding a dummy node to eliminate the need of boundary checking
 
-        self.schema_storage = build_schema(schema)
+        self.schema_storage, self.anchor_storage, self.id_storage = build_schema(schema)
         # print(f'engine: {target}')
         self.token_stream = token_stream(target)
-        self.validators = ValidationEngine(self.schema_storage)
+        self.validators = ValidationEngine(self.schema_storage, self.anchor_storage, self.id_storage)
         self.circuit_breaker = CircuitBreaker(max_depth)
 
         self.current_node = self.stack[0]
@@ -267,7 +267,7 @@ class Engine():
                     # if schema is a boolean or ValidationState
                     node.my_states.append(schemas)
 
-        # print(f'verify done: {node.my_states}')
+        print(f'verify done: {node.my_states}')
         # print(f'node: {node.value} {node.type}')
         # print(f'verify node: {node.my_schema_id_lst}')
 

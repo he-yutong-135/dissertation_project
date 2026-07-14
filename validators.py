@@ -1,15 +1,18 @@
-from constants import Cursor, needs_log, ValidationState, get_fingerprint_arr, get_fingerprint_obj
+from constants import Cursor, needs_log, ValidationState, get_fingerprint_arr, get_fingerprint_obj, get_fingerprint_value
 from error_log import ErrorType, ValidationError, ValidationResult, ValidationResNoLog
 from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef, is_schema_ref
 from validator_pool import keyword_types, is_type, composition_validators, composition_keywords, child_schema_keywords, keyword_groups
 
 import re
+from urllib.parse import urljoin
 
 NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
 
 class ValidationEngine():
-    def __init__(self, schema_storage):
+    def __init__(self, schema_storage, anchor_storage, id_storage):
         self.schema_storage = schema_storage
+        self.anchor_storage = anchor_storage
+        self.id_storage = id_storage
 
     def get_schema(self, schema_id):
         if isinstance(schema_id, SchemaRef): schema_id = schema_id.value()
@@ -27,22 +30,92 @@ class ValidationEngine():
         schema = self.get_schema(schema_ref.value())
 
         # update $ref
-        ref_path = schema.schemas.get('$ref', None)
-        # if it has been updated, no need to update again
-        if isinstance(ref_path, SchemaRef):
+        ref = schema.schemas.get("$ref")
+
+        if isinstance(ref, SchemaRef):
             return
-        if ref_path:
-            def_schema = self.find_schema(ref_path)
-            schema.schemas['$ref'] = def_schema
-            # print(f'updating schema: $ref -> {def_schema}')
+
+        if ref is None:
+            return
+
+        target = self.resolve_ref(ref, schema.base_uri)
+        print(f'updating schema: $ref: {ref} -> {target}')
+        print(self.anchor_storage)
+
+        if target is None:
+            raise ValueError(f"Unknown $ref {ref}")
+
+        schema.schemas["$ref"] = target
+        print(f'updating schema: $ref -> {target}')
 
         # update const
         const_value = schema.schemas.get('const', None)
-        if const_value:
+        print(f'found const: {const_value}')
+        if const_value is not None:
             if isinstance(const_value, list) or isinstance(const_value, SchemaRef):
                 schema.schemas['const'] = self.calculate_const_value(const_value)
 
             print(f'update const: {schema.schemas['const']}')
+
+
+    def resolve_ref(self, ref: str, base_uri):
+
+        # local reference
+        if ref.startswith("#"):
+            fragment = ref[1:]
+
+            # JSON pointer
+            if fragment.startswith("/"):
+                return self.find_pointer(None, fragment)
+
+            # anchor
+            if base_uri:
+                return self.anchor_storage.get(f"{base_uri}#{fragment}")
+
+            return self.anchor_storage.get(fragment)
+
+
+        absolute = urljoin(base_uri, ref)
+
+        if "#" not in absolute:
+            return self.id_storage.get(absolute)
+
+
+        resource, fragment = absolute.split("#", 1)
+
+        if fragment.startswith("/"):
+            return self.find_pointer(resource, fragment)
+
+        return self.anchor_storage.get(f"{resource}#{fragment}")
+    
+    def find_pointer(self, resource, pointer):
+
+        if resource is None:
+            schema_ref = SchemaRef(0)
+        else:
+            schema_ref = self.anchor_storage.get(resource)
+
+        if schema_ref is None:
+            return None
+
+        # remove leading /
+        parts = pointer[1:].split("/")
+
+        for key in parts:
+
+            # JSON Pointer escaping
+            key = key.replace("~1", "/").replace("~0", "~")
+
+            node = self.get_schema(schema_ref.value())
+
+            child = node.schemas.get(key)
+
+            if child is None:
+                return None
+
+            schema_ref = child
+
+        return schema_ref
 
     def calculate_const_value(self, const_value):
         if isinstance(const_value, list):
@@ -54,30 +127,7 @@ class ValidationEngine():
             return get_fingerprint_obj(const_dict)
         else:
             return const_value
-
-
-    def find_schema(self, path):
-        paths = path.split('/')
-        paths.reverse()
         
-        schema_idx = 0
-        while paths:
-            key = paths.pop()
-
-            if key == '#': 
-                schema_idx = SchemaRef(0)
-                continue
-                 
-            schema_node = self.get_schema(schema_idx)
-            # print(key)
-            # print(schema_node)
-
-            next_ref = schema_node.schemas.get(key)
-            if next_ref is None:
-                return REJECT_NODE.id
-
-            schema_idx = next_ref
-        return schema_idx
                 
     def validate_schema(self, schema_id, value, children_state=None, my_type=None,  idx=None):
         if idx is None:

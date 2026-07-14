@@ -1,7 +1,10 @@
 import sys
+from urllib.parse import urljoin
 from token_gen import token_stream, TokenType, Token
 
 schema_storage = []
+anchor_storage = {}
+id_storage = {}
 
 TEST_FILE = 'schema.json'
     
@@ -9,6 +12,7 @@ class SchemaNode:
     def __init__(self):
         self.id = 0
         self.schemas = {} # key -> schema data
+        self.base_uri = None
 
     def content(self):
         return self.schemas
@@ -93,12 +97,64 @@ def parse_object(token_stream):
         if token.type != TokenType.KEY:
             raise ValueError("Expected key in schema object")
         key = to_primitive(token)
-        # print(f"Parsing field: {key}")
+        
         # store the parsed schema for this key in the current node
         node.schemas[key] = parse(token_stream)
+
         # print(f"Finished parsing field: {key}, value={node.schemas[key]}")
     # return a reference to this schema node
     return SchemaRef(schema_id)
+
+def collect_identifiers(schema_ref, base_uri=""):
+    visited = set()
+
+    def visit(ref, current_base):
+
+        if not isinstance(ref, SchemaRef):
+            return
+
+        idx = ref.value()
+
+        if idx in visited:
+            return
+
+        visited.add(idx)
+
+        node = schema_storage[idx]
+
+        schema_id = node.schemas.get("$id")
+
+        if schema_id:
+            current_base = urljoin(current_base, schema_id)
+
+            id_storage[current_base] = ref
+
+        node.base_uri = current_base
+
+        anchor = node.schemas.get("$anchor")
+        if anchor:
+            if current_base:
+                anchor_storage[f"{current_base}#{anchor}"] = ref
+            else:
+                anchor_storage[anchor] = ref
+
+
+        for value in node.schemas.values():
+            if isinstance(value, SchemaRef):
+                visit(value, current_base)
+
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, SchemaRef):
+                        visit(item, current_base)
+
+            elif isinstance(value, dict):
+                for item in value.values():
+                    if isinstance(item, SchemaRef):
+                        visit(item, current_base)
+
+
+    visit(schema_ref, base_uri)
 
 def parse_array(token_stream):
     arr = []
@@ -129,16 +185,22 @@ def extra_node(storage=None):
 def build_schema(file_name):
     # clear the schema storage before building a new schema
     schema_storage.clear()
-    value = parse(token_stream(file_name))
-    print(value)
-    if value is not None and len(schema_storage) == 0:
+    anchor_storage.clear()
+    id_storage.clear()
+
+    root = parse(token_stream(file_name))
+    print(root)
+    if root is not None and len(schema_storage) == 0:
         # if the schema is a boolean and no nodes have been created, create a new node for it
         node = SchemaNode()
-        node.schemas[None] = value
+        node.schemas[None] = root
         schema_storage.append(node)
 
-    print(schema_storage)
-    return schema_storage
+    if isinstance(root, SchemaRef):
+        collect_identifiers(root)
+
+    # print(schema_storage)
+    return schema_storage, anchor_storage, id_storage
 
 if __name__ == "__main__":
     storage = None

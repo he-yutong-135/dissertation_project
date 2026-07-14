@@ -75,7 +75,10 @@ def raw_lexer(stream):
         if c in "{}[]:,":
             yield ("STRUCT", c)
         elif c == '"':
-            yield ("STRING", read_string(stream))
+            s = read_string(stream)
+            # incomplete strings are not processed
+            if s is not None:
+                yield ("STRING", s)
         else:
             yield ("RAW", read_value(c, stream))
 
@@ -87,7 +90,8 @@ def read_string(char_stream: CharStream):
         c = char_stream.get()
 
         if c == '':
-            raise ValueError("Unterminated string")
+            # raise ValueError("Unterminated string")
+            return None
 
         if c == '"':
             break

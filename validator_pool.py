@@ -271,9 +271,9 @@ def validate_properties(errors):
     additional = errors.pop('additionalProperties', None)
     # print(f'validate_properties additional: {additional}')
 
-    if properties is not None: cnt = len(properties)
-    elif patternProperties is not None: cnt = len(patternProperties)
-    elif additional is not None: cnt = len(additional)
+    if properties is not None and isinstance(properties, list): cnt = len(properties)
+    elif patternProperties is not None and isinstance(patternProperties, list): cnt = len(patternProperties)
+    elif additional is not None and isinstance(additional, list): cnt = len(additional)
     else:
         return True, {}
 
@@ -340,8 +340,8 @@ def validate_items(errors):
     items = errors.pop('items', None)
     cnt = 0
 
-    if prefixItems is not None: cnt = len(prefixItems)
-    elif items is not None: cnt = len(items)
+    if prefixItems is not None and isinstance(prefixItems, list): cnt = len(prefixItems)
+    elif items is not None and isinstance(items, list): cnt = len(items)
     else: return True, {}
 
     result = True
@@ -457,8 +457,8 @@ keyword_types = {
 }
 
 def is_type(my_type, expect_type):
-    if my_type is None:
-        raise ValueError('Every node should have a type!')
+    # if my_type is None:
+    #     raise ValueError('Every node should have a type!')
     if expect_type is None:
         return True # meaning no type requirements, applying to all types
     if expect_type == "number":
