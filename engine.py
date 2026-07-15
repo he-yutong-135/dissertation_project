@@ -90,7 +90,7 @@ class Node:
         # if the node is of type Value, stores its value directly
         self.children[node.key] = node.value
 
-        print(f'remove child: {node} -> {self.children}')
+        # print(f'remove child: {node} -> {self.children}')
 
         # print(len(self.children))
 
@@ -128,23 +128,15 @@ class Engine():
         # print(schema_id_lst)
         if schema_id_lst is not None:
             node.my_schema_id_lst = schema_id_lst
-        # if not isinstance(node.my_schema_id_lst, list): 
-        #     print(node)
-        #     print(node.my_schema_id_lst)
-        # print(f'push: find schema for {node}: {node.my_schema_id_lst}')
         node.children_schema_id_lst = self.validators.collect_schemas_for_children(node.my_schema_id_lst, node.type)
 
         # multiple schemas
-        
         node.child_states = [[] for _ in range(len(node.children_schema_id_lst))]
-
 
         self.current_node = node
         self.stack.append(node)
         self.circuit_breaker.on_push()
-
-        print(f'push: {node}')
-
+        # print(f'push: {node}')
 
     def pop(self):
         # print(f'pop: {len(self.stack)}')
@@ -203,7 +195,7 @@ class Engine():
             node.parent.register_state(node)
             
     def verify_node(self, node: Node):
-        print(f'verify: {node}: {node.my_schema_id_lst}')
+        print(f'verify: {node} with type: {node.type}: {node.my_schema_id_lst}')
         
         # if len(node.my_schema_id_lst) == 0:
         #     return
@@ -217,11 +209,11 @@ class Engine():
                 if isinstance(schemas, tuple):
                     validationRes = NodeValidationRes()
                     for schema_id in schemas:
-                        validationRes += self.validators.validate_schema(schema_id, node.children, node.child_states, node.type)
+                        validationRes += self.validators.validate_schema(schema_id, node.children, node.child_states, my_type=node.type)
                     node.my_states.append(validationRes)  
 
                 elif isinstance(schemas, SchemaRef):
-                    node.my_states.append(self.validators.validate_schema(schemas, node.children, node.child_states, node.type))
+                    node.my_states.append(self.validators.validate_schema(schemas, node.children, node.child_states, my_type=node.type))
 
                 else:
                     # if schema is a boolean or ValidationState
@@ -236,7 +228,7 @@ class Engine():
                     validationRes = NodeValidationRes()
                     for schema_id in schemas:
                         if isinstance(schema_id, SchemaRef):
-                            validationRes += self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states, node.type)
+                            validationRes += self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states, my_type=node.type)
                         else:
                             validationRes += schema_id # bool
                     node.my_states.append(validationRes)  
@@ -247,10 +239,6 @@ class Engine():
                 else:
                     # if schema is a boolean or ValidationState
                     node.my_states.append(schemas)    
-
-            
-
-                
 
         else:
             for schemas in node.my_schema_id_lst:
@@ -267,10 +255,9 @@ class Engine():
                     # if schema is a boolean or ValidationState
                     node.my_states.append(schemas)
 
-        print(f'verify done: {node.my_states}')
+        # print(f'verify done: {node.my_states}')
         # print(f'node: {node.value} {node.type}')
         # print(f'verify node: {node.my_schema_id_lst}')
-
 
     def create_new_node(self, type, key=None):
         if key: node = Node(key)
@@ -286,6 +273,7 @@ class Engine():
             
     def run(self):
         pending_key = None
+        type = NodeType.Object
         try:
             if self.token_stream is None:
                 print('no tokens')
@@ -294,6 +282,7 @@ class Engine():
                 if token.is_start_object():
                     if pending_key is None and len(self.stack) == 1:
                         key = 'top_object'
+                        
                     
                     elif self.current_node.type == NodeType.Array:
                         key = len(self.current_node.children) if self.current_node.children else 0
@@ -322,7 +311,7 @@ class Engine():
                     parent = self.current_node
 
                     # decide the type of the value
-                    type = None
+                    # type = None
                     print(value)
                     if value is None:
                         type = NodeType.Null
@@ -335,8 +324,6 @@ class Engine():
                     elif isinstance(value, str):
                         type = NodeType.String
 
-                    
-
                     # if it is in an array
                     if parent.type is NodeType.Array:
                         # print(f'pushing child into array object {parent}->{value}')
@@ -348,6 +335,7 @@ class Engine():
                         node = self.create_new_node(type, pending_key)
                         node.set_value(value)
                         pending_key = None
+                    print(f'type is {type}')
 
                     self.pop()
             

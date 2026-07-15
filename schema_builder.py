@@ -189,7 +189,6 @@ def build_schema(file_name):
     id_storage.clear()
 
     root = parse(token_stream(file_name))
-    print(root)
     if root is not None and len(schema_storage) == 0:
         # if the schema is a boolean and no nodes have been created, create a new node for it
         node = SchemaNode()

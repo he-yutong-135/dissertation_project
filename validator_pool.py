@@ -14,7 +14,7 @@ def validate_maximum(value, max_val):
     return True
 
 def validate_enum(value, enum_list):
-    print(f'validate enum: {value} and {enum_list}')
+    # print(f'validate enum: {value} and {enum_list}')
     for item in enum_list:
         if value == item and type(value) == type(item):
             return True
@@ -27,7 +27,7 @@ def is_number(value):
     return validate_types(value, ['number', 'integer'])
 
 def validate_type(value, schema_type):
-    print(f'validate_type: {schema_type}')
+    # print(f'validate_type: {schema_type}')
     # if value is None:
     #     return schema_type in {"object", "array", "null"}
     
@@ -115,7 +115,7 @@ def validate_maxItems(value: list, maxNum):
 
 def validate_unique_items(children, required):
     children = [(type(c), c) for c in children]
-    print(f'unique items: {children}')
+    # print(f'unique items: {children}')
     if required:
         return len(set(children)) == len(children)
     return True
@@ -134,7 +134,7 @@ def validate_dependent_required(children, dependentRequired):
     return True
 
 def validate_required(children, required):
-    print(f'validate_required: {children}, {required}')
+    # print(f'validate_required: {children}, {required}')
     if not isinstance(children, dict):
         return True
     
@@ -181,6 +181,7 @@ validator_storage = {
 }
 
 def validate_anyOf(res_lst: list):
+    print(f'validate anyof: {res_lst}')
     
     res_lst = res_lst if isinstance(res_lst, list) else [res_lst]
     for res in res_lst:
@@ -189,7 +190,7 @@ def validate_anyOf(res_lst: list):
     return False
 
 def validate_allOf(res_lst: list):
-    print(res_lst)
+    # print(res_lst)
     res_lst = res_lst if isinstance(res_lst, list) else [res_lst]
     for res in res_lst:
         if res or  res is None: # if one branch is invalid
@@ -207,6 +208,7 @@ def validate_oneOf(res_lst: list):
         return False
 
 def validate_not(res):
+    print(f'validate_not: {res}')
     if not res or  res is None: # no error -> return an error
         return False # invalid
     else:
@@ -247,6 +249,8 @@ child_schema_validators = {
     "additionalProperties": validate_allOf
 }
 
+accept_bool_param = ["enum", "const", "default", "example", "uniqueItems"] + child_schema_keywords + ["unevaluatedProperties"]
+
 keyword_groups = ['if_then_else', 'property_group', 'item_group']
 def validate_if_then_else(errors: dict):
     # default to be False, which means no error
@@ -264,7 +268,7 @@ def validate_if_then_else(errors: dict):
     
 
 def validate_properties(errors):
-    print(f'validate_properties: {errors}')
+    # print(f'validate_properties: {errors}')
     cnt = 0
     properties = errors.pop('properties', None)
     patternProperties = errors.pop('patternProperties', None)
@@ -424,13 +428,12 @@ keyword_types = {
     "minLength": ("string", validate_validate_minimum_len),
     "maxLength": ("string", validate_validate_maximum_len),
     "pattern": ("string", validate_pattern),
-    # "format": ("string", validate_format), # not yet supported
 
     # Array
     "item_group": ("array", validate_items), # added
     "items": ("array", None),
     "prefixItems": ("array", None),
-    "contains": ("array", None),
+    "contains": ("array", validate_anyOf),
     "minItems": ("array", validate_minItems),
     "maxItems": ("array", validate_maxItems),
     "uniqueItems": ("array", validate_unique_items),
@@ -442,8 +445,7 @@ keyword_types = {
     "additionalProperties": ("object", None),
     "required": ("object", validate_required),
     "dependentRequired": ("object", validate_dependent_required),
-    "propertyNames": ("Not implemented", None), # not implemented
-    "dependentSchemas": ("Not implemented", None), # not implemented
+    
 
     # Composition
     "allOf": (None, validate_allOf),
@@ -453,7 +455,19 @@ keyword_types = {
     'if_then_else': (None, validate_if_then_else), # added
     "if": (None, validate_if_then_else),
     "then": (None, None),
-    "else": (None, None)
+    "else": (None, None),
+
+    # Not implemented
+    "unevaluatedProperties": (None, accept),
+    "unevaluatedItems": (None, accept),
+    "dynamicRef": (None, accept),
+    "maxContains": (None, accept),
+    "minContains": (None, accept),
+    "dependentSchemas": (None, accept),
+    "refRemote": (None, accept),
+    "format": ("string", accept),
+    "propertyNames": (None, accept),
+    "dependentSchemas": (None, accept),
 }
 
 def is_type(my_type, expect_type):
