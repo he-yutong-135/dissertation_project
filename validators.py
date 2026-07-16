@@ -156,6 +156,11 @@ class ValidationEngine():
 
             # if type matches, start validating
             if isinstance(param, bool) and key not in accept_bool_param:
+                # if the value is empty, like an empty array, validation
+                # if isinstance(value, list) or isinstance(value, dict):
+                #     if len(value) == 0:
+                #        errors[key] = True
+                #        continue 
                 if not param: # False
                     errors[key] = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {param}'}})
                 else:
@@ -163,15 +168,26 @@ class ValidationEngine():
             
             # schema that requires the validation results from its child nodes
             elif key in child_schema_keywords: 
+                print(f'validating with {current_schema}, {value}, ERROR: {errors}, children: {children_state}')
                 if isinstance(param, bool):
-                    if not bool(param):
+                    if key == "contains" and len(value) == 0:
+                        errors[key] = ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": key, "states": 'empty array'})
+                    elif key == "items" and len(value) == 0:
+                        errors[key] = True
+                    elif not bool(param):
                         errors[key] = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {param}'}})
                         print(f'key: {key}: {param} -> {errors[key]}')
                     
                 else:
-                    child_validation_results = children_state[idx.value()] # a list
+                    child_validation_results = children_state[idx.value()] if len(children_state) > 0 else children_state
                     idx.increase()
-                    errors[key] = child_validation_results 
+                    if func is None:
+                        errors[key] = child_validation_results 
+                    else:
+                        
+                        if not func(child_validation_results): # true means valid
+                            res_states = [res.state() for res in child_validation_results]
+                            errors[key] = ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": key, "states": ', '.join(res_states)})
 
             elif key is None:
                 if not param:
@@ -208,12 +224,13 @@ class ValidationEngine():
                     
                     errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
 
-        print(f'validating with {current_schema}, {value}, ERROR: {errors}, children: {children_state}')
+        
         error = self.compress_errors(errors, schema_id)
+        print(f'compress done: {error}')
         return error
     
     def compress_errors(self, errors, schema_id):
-        print(f'compress: {errors}')
+        
         if isinstance(errors, NodeValidationRes): 
             return errors
         
@@ -230,6 +247,7 @@ class ValidationEngine():
         result = NodeValidationRes(schema_id=schema_id)
         if isinstance(errors, dict):
             # validating dependent keywords
+            print(f'compress: {errors}')
             for group in keyword_groups: 
                 _, func = keyword_types.get(group)
 
@@ -243,7 +261,10 @@ class ValidationEngine():
                 # else:
                 errors[k] = self.compress_errors(v, schema_id)
 
+            
+            print(f'compress: {errors}')
             for k, v in errors.items():
+                
                 
                 # if k in ['if', 'then', 'else']: continue # they are processed
                 res_lst = v if isinstance(v, list) else [v]
@@ -256,6 +277,7 @@ class ValidationEngine():
                         result += ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": k, "states": ', '.join(res_states)})
                 else:
                     result += v
+            
 
             return result
 

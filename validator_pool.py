@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal
 from constants import type_map, ValidationState
 
 def validate_minimum(value, min_val):
@@ -61,11 +62,24 @@ def validate_types(value, types):
         return validate_type(value, types)
 
 def validate_multiple_of(value, multiple):
-    if not is_number(value): return True # does not apply to non-numeric value
-    # if not is_number(multiple): return False
-    if float(value) % float(multiple) != 0:
+    if not is_number(value):
+        return True
+
+    value = Decimal(str(value))
+    multiple = Decimal(str(multiple))
+
+    if multiple <= 0:
         return False
-    return True
+
+    v_exp = value.as_tuple().exponent
+    m_exp = multiple.as_tuple().exponent
+
+    scale = max(-v_exp, -m_exp)
+
+    value_scaled = int(value * (10 ** scale))
+    multiple_scaled = int(multiple * (10 ** scale))
+
+    return value_scaled % multiple_scaled == 0
 
 def validate_const(value, const):
     return value == const
@@ -184,10 +198,12 @@ def validate_anyOf(res_lst: list):
     print(f'validate anyof: {res_lst}')
     
     res_lst = res_lst if isinstance(res_lst, list) else [res_lst]
+    result = False
     for res in res_lst:
         if not res or res is None: # if one branch is valid
-            return True
-    return False
+            result = True
+            break
+    return result
 
 def validate_allOf(res_lst: list):
     # print(res_lst)
@@ -249,23 +265,35 @@ child_schema_validators = {
     "additionalProperties": validate_allOf
 }
 
-accept_bool_param = ["enum", "const", "default", "example", "uniqueItems"] + child_schema_keywords + ["unevaluatedProperties"]
-
+accept_bool_param = ["enum", "const", "default", "example", "uniqueItems"] + child_schema_keywords + \
+                        ["unevaluatedProperties", "anyOf", "allOf", "oneOf", "$ref"]
 keyword_groups = ['if_then_else', 'property_group', 'item_group']
+
 def validate_if_then_else(errors: dict):
     # default to be False, which means no error
-    if_value = errors.pop('if', False)
-    then_value = errors.pop('then', False)
-    else_value = errors.pop('else', False)
+    if_value = errors.pop('if', None)
+    then_value = errors.pop('then', True)
+    else_value = errors.pop('else', True)
+
+    if isinstance(if_value, bool): if_value = not if_value
+    if isinstance(then_value, bool): then_value = not then_value
+    if isinstance(else_value, bool): else_value = not else_value
+    
+    print(f'validate_if_then_else: {if_value}, {then_value}, {else_value}')
     
     states = {'if': 'invalid' if if_value else 'valid',
                'then': 'invalid' if then_value else 'valid', 
                'else': 'invalid' if else_value else 'valid'}
-    if not if_value: # if no error
-        return not bool(then_value), states
-    if if_value:
-        return not bool(else_value), states
     
+    
+    if if_value is None:
+        return True, states
+    else:
+        if not if_value: # if no error
+            return not bool(then_value), states
+        if if_value:
+            return not bool(else_value), states
+        
 
 def validate_properties(errors):
     # print(f'validate_properties: {errors}')
@@ -339,21 +367,23 @@ def validate_properties(errors):
     return result, states
 
 def validate_items(errors):
-    # print(f'validate_items: {errors}')
+    print(f'validate_items: {errors}')
     prefixItems = errors.pop('prefixItems', None)
     items = errors.pop('items', None)
     cnt = 0
 
+    print(f'validate_items, {items}')
     if prefixItems is not None and isinstance(prefixItems, list): cnt = len(prefixItems)
     elif items is not None and isinstance(items, list): cnt = len(items)
+    elif items is not None:
+        return not bool(items), {'items': items.state()}
     else: return True, {}
-
     result = True
     states = {}
 
     for i in range(cnt):
         i_prefix = prefixItems[i] if prefixItems else None
-        if items:
+        if items is not None:
             if isinstance(items, list):
                 i_items = items[i]
             else:
@@ -377,6 +407,7 @@ def validate_items(errors):
                     prefix_info = 'valid'
 
         items_info = None
+        # print(f'items: {i_items}, {matched}')
         if i_items is not None and not matched:
             if bool(i_items):
                 items_info = 'invalid'
@@ -389,8 +420,8 @@ def validate_items(errors):
         if items is not None:
             states[f'child({i})']['items'] = items_info
 
-    # print(f'validate_items: {states}')
-    # print(f'validate_items result: {result}')
+    print(f'validate_items: {states}')
+    print(f'validate_items result: {result}')
 
     return result, states
 
