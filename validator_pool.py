@@ -162,38 +162,6 @@ def validate_required(children, required):
 def accept(value, param):
     return True
 
-validator_storage = {
-    "minimum": validate_minimum,
-    "maximum": validate_maximum,
-    "enum": validate_enum,
-    "type": validate_types,
-    "multipleOf": validate_multiple_of,
-    "exclusiveMaximum": validate_exclusive_maximum,
-    "minLength": validate_validate_minimum_len,
-    "maxLength": validate_validate_maximum_len,
-    "pattern": validate_pattern,
-    "default": accept, # default does not affect validation result
-    "$schema": accept,
-    "$id": accept,
-    "$comment": accept,
-    "title": accept,
-    "description": accept,
-    "examples": accept,
-    "additionalProperties": accept,
-    "items": accept,
-    "$defs": accept,
-    "const": validate_const,
-
-    # array validators
-    "uniqueItems": validate_unique_items,
-    "minItems": validate_minItems,
-    "maxItems": validate_maxItems,
-
-    # object validators
-    "dependentRequired": validate_dependent_required,
-    "required": validate_required
-}
-
 def validate_anyOf(res_lst: list):
     print(f'validate anyof: {res_lst}')
     
