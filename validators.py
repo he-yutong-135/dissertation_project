@@ -5,8 +5,10 @@ from validator_pool import keyword_types, is_type, composition_validators, compo
 
 import re
 from urllib.parse import urljoin
+from dataclasses import dataclass
 
 NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
+
 
 class ValidationEngine():
     def __init__(self, schema_storage, anchor_storage, id_storage):
@@ -58,7 +60,7 @@ class ValidationEngine():
             # print(f'update const: {schema.schemas['const']}')
 
 
-    def resolve_ref(self, ref: str, base_uri):
+    def resolve_ref(self, ref, base_uri):
 
         # local reference
         if ref.startswith("#"):
@@ -130,6 +132,7 @@ class ValidationEngine():
         
                 
     def validate_schema(self, schema_id, value, children_state=None, my_type=None,  idx=None):
+        # initiate index
         if idx is None:
             idx = Cursor()
         # print(f'validate_schema: {value} with schema id: {schema_id}')
@@ -264,9 +267,6 @@ class ValidationEngine():
             
             # print(f'compress: {errors}')
             for k, v in errors.items():
-                
-                
-                # if k in ['if', 'then', 'else']: continue # they are processed
                 res_lst = v if isinstance(v, list) else [v]
                 res_states = [res.state() for res in res_lst]
                 
@@ -327,7 +327,7 @@ class ValidationEngine():
         # print(f'collects: {extra_schemas} for children')
         return extra_schemas
     
-    def collect_schemas_for_me(self, schema_lst, my_key, my_type):
+    def collect_schemas_for_me(self, schema_lst, my_key):
         schema_ids = []
         schema_lst = schema_lst if isinstance(schema_lst, list) else [schema_lst]
         # print(f'collect_schemas_for_me from {schema_lst}, My info: {my_key}, {my_type}')

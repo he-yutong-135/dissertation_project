@@ -6,8 +6,6 @@ from constants import NodeType, schema_file
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
 from constants import get_fingerprint_obj, get_fingerprint_arr, needs_log, get_fingerprint_value
 
-import gc
-
 NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
 
 class Node:
@@ -90,10 +88,6 @@ class Node:
         # if the node is of type Value, stores its value directly
         self.children[node.key] = node.value
 
-        # print(f'remove child: {node} -> {self.children}')
-
-        # print(len(self.children))
-
     def register_state(self, node):
 
         if node.key not in self.children.keys():
@@ -122,9 +116,8 @@ class Engine():
     def push(self, node):
         # print(f'push: stack: {len(self.stack)}, parent children: {node.parent.children}')
 
-        # print(len(self.stack))
         # bind the node with its schema
-        schema_id_lst = self.validators.collect_schemas_for_me(node.parent.children_schema_id_lst, node.key, node.type)
+        schema_id_lst = self.validators.collect_schemas_for_me(node.parent.children_schema_id_lst, node.key)
         # print(schema_id_lst)
         if schema_id_lst is not None:
             node.my_schema_id_lst = schema_id_lst
@@ -145,10 +138,6 @@ class Engine():
         self.circuit_breaker.on_pop()
         if node.parent is None:
             raise ValueError('standalone node')
-        # print('----------------')
-        # print(f'pop node: {node}')
-        # print(f'pop: {node.get_path()}')
-        # print(f'my content: {node.content()}')
         self.verify_node(node)
 
         # after verifying the node, register its state to the parent node
@@ -164,12 +153,6 @@ class Engine():
 
         # print(f'pop: stack: {len(self.stack)}, parent children: {node.parent.children}')
         node.parent = None # break the reference to its parent 
-        # refs = gc.get_referrers(node.my_states)
-
-        # print(len(refs))
-        # for r in refs:
-        #     if isinstance(r, Node): 
-        #         print(r)
         
         node.children = None # break the reference to its children
         node.my_states = None
@@ -177,8 +160,6 @@ class Engine():
         node = None
 
     def force_pop(self):
-        if len(self.stack) == 1:
-            raise ValueError('cannot pop the root node')
         unclose_error = NodeValidationRes(ValidationError(ErrorType.UNCLOSED))
         while(len(self.stack) > 1):
             node = self.stack.pop()
@@ -196,69 +177,37 @@ class Engine():
             
     def verify_node(self, node: Node):
         # print(f'verify: {node} with type: {node.type}: {node.my_schema_id_lst}')
+        my_value = None
         
         if node.type is NodeType.Object:
-            
             node.set_value(get_fingerprint_obj(node.children))
-            
-            for schemas in node.my_schema_id_lst:
-                
-                if isinstance(schemas, tuple):
-                    validationRes = NodeValidationRes()
-                    for schema_id in schemas:
-                        validationRes += self.validators.validate_schema(schema_id, node.children, node.child_states, my_type=node.type)
-                    node.my_states.append(validationRes)  
-
-                elif isinstance(schemas, SchemaRef):
-                    node.my_states.append(self.validators.validate_schema(schemas, node.children, node.child_states, my_type=node.type))
-
-                else:
-                    # if schema is a boolean or ValidationState
-                    node.my_states.append(schemas)
+            my_value = node.children
 
         elif node.type is NodeType.Array:
-            
             node.set_value(get_fingerprint_arr(node.children.values()))  
-            for schemas in node.my_schema_id_lst:
-                
-                if isinstance(schemas, tuple):
-                    validationRes = NodeValidationRes()
-                    for schema_id in schemas:
-                        if isinstance(schema_id, SchemaRef):
-                            validationRes += self.validators.validate_schema(schema_id, list(node.children.values()), node.child_states, my_type=node.type)
-                        else:
-                            validationRes += schema_id # bool
-                    node.my_states.append(validationRes)  
-
-                elif isinstance(schemas, SchemaRef):
-                    node.my_states.append(self.validators.validate_schema(schemas, list(node.children.values()), node.child_states, my_type=node.type))
-
-                else:
-                    # if schema is a boolean or ValidationState
-                    node.my_states.append(schemas)    
+            my_value = list(node.children.values())
 
         else:
-            for schemas in node.my_schema_id_lst:
-                if isinstance(schemas, tuple):
-                    validationRes = NodeValidationRes()
-                    for schema_id in schemas:
-                        validationRes += self.validators.validate_schema(schema_id, node.value, my_type=node.type)
-                    node.my_states.append(validationRes)  
+            my_value = node.value
+        # verify each schema iteratively            
+        for schemas in node.my_schema_id_lst:
+                
+            if isinstance(schemas, tuple):
+                validationRes = NodeValidationRes()
+                for schema_id in schemas:
+                    validationRes += self.validators.validate_schema(schema_id, my_value, node.child_states, my_type=node.type)
+                node.my_states.append(validationRes)  
 
-                elif isinstance(schemas, SchemaRef):
-                    node.my_states.append(self.validators.validate_schema(schemas, node.value, my_type=node.type))
+            elif isinstance(schemas, SchemaRef):
+                node.my_states.append(self.validators.validate_schema(schemas, my_value, node.child_states, my_type=node.type))
 
-                else:
-                    # if schema is a boolean or ValidationState
-                    node.my_states.append(schemas)
-
-        # print(f'verify done: {node.my_states}')
-        # print(f'node: {node.value} {node.type}')
-        # print(f'verify node: {node.my_schema_id_lst}')
+            else:
+                # if schema is a boolean or ValidationState, no need for verification, append directly
+                node.my_states.append(schemas)
 
     def create_new_node(self, type, key=None):
         if key: node = Node(key)
-        else: node = Node(type)
+        else: node = Node(type) # if no key provided, use its type as the default key
         node.type = type
         node.parent = self.current_node
         
@@ -276,7 +225,6 @@ class Engine():
                 if token.is_start_object():
                     if pending_key is None and len(self.stack) == 1:
                         key = 'top_object'
-                        
                     
                     elif self.current_node.type == NodeType.Array:
                         key = len(self.current_node.children) if self.current_node.children else 0
@@ -322,7 +270,6 @@ class Engine():
                         # print(f'pushing child into array object {parent}->{value}')
                         node = self.create_new_node(type)
                         node.set_value(value)
-
                     else:
                         # it is in an object
                         node = self.create_new_node(type, pending_key)
@@ -333,7 +280,6 @@ class Engine():
             # if stack has remaining nodes, they are not closed, force pop them
             if len(self.stack) > 1:
                 self.force_pop()
-        
         except CircuitBreakerException as e:
             self.logs.add_log(NodeValidationRes(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
                               'circuit_breaker'))
@@ -344,11 +290,9 @@ class Engine():
             self.logs.report(self.circuit_breaker.max_recorded_depth)
             top_obj_state = self.stack[0]
             
-            
             if len(top_obj_state.child_states[0]) == 0:
                 return False, "valid"
             else:
-                # print(bool(top_obj_state.child_states[0][0]))
                 return bool(top_obj_state.child_states[0][0]), top_obj_state.child_states[0][0].state()
 
 if __name__ == '__main__':
