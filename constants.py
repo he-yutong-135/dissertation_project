@@ -1,4 +1,5 @@
 from enum import auto, StrEnum
+from schema_builder import SchemaRef
 
 class NodeType(StrEnum):
     Object = "object"
@@ -59,6 +60,18 @@ def get_fingerprint_arr(children: list):
 
 def get_fingerprint_value(value):
     return hash((type(value), value))
+
+def calculate_const_value(const_value):
+    if isinstance(const_value, list):
+        const_value = [calculate_const_value(val) for val in const_value]
+        return get_fingerprint_arr(const_value)
+    elif isinstance(const_value, SchemaRef):
+        const_dict = const_value.follow().content()
+        const_dict = {k: calculate_const_value(v) for k, v in const_dict.items()}
+        return get_fingerprint_obj(const_dict)
+    else:
+        return const_value
+
 
 WILDCARD = "*"
 

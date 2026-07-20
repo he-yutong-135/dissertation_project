@@ -153,14 +153,9 @@ class ValidationResult():
             for result in other: 
                 if result:
                     self.add(result) 
-        # elif isinstance(other, ValidationError) and other:
-        # elif isinstance(other, bool):
-        #     # when only a bool provided, false means invalid, true means invalid
-        #     if not other: self.errors.append(ValidationError(ErrorType.DETERMINED_ERROR))
         elif isinstance(other, ValidationError) and other:
             self.errors.append(other)
         elif isinstance(other, ValidationResult) and other:
-            # self.errors.extend([e for e in other.errors if e])
             self.errors.extend(other.errors)
         return self
     
@@ -226,18 +221,11 @@ class ValidationLog():
         self.log_print.append('--- Validation Error Log ---\n')
 
     def add_log(self, errors, path=None, info=None):
-        # print(f'add log to logs: {errors}')
         
         if isinstance(errors, ValidationError): errors = ValidationResult(errors)
-        # errors.add_info(path, info)
         self.log_print.append(format_node_info(path, info))
         self._logs.append(errors)
         self.log_print.append(str(errors))
-        # print(f'log added: {self._logs}')
-
-    # def add_log_message(self, log):
-    #     self._logs.append(log)
-    #     self.log_print.append(str(log))
 
     def report(self, depth = 0):
         # end logging
