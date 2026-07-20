@@ -195,10 +195,7 @@ class Engine():
             node.parent.register_state(node)
             
     def verify_node(self, node: Node):
-        print(f'verify: {node} with type: {node.type}: {node.my_schema_id_lst}')
-        
-        # if len(node.my_schema_id_lst) == 0:
-        #     return
+        # print(f'verify: {node} with type: {node.type}: {node.my_schema_id_lst}')
         
         if node.type is NodeType.Object:
             
@@ -275,9 +272,6 @@ class Engine():
         pending_key = None
         type = NodeType.Object
         try:
-            if self.token_stream is None:
-                print('no tokens')
-            
             for token in self.token_stream:
                 if token.is_start_object():
                     if pending_key is None and len(self.stack) == 1:
@@ -312,7 +306,6 @@ class Engine():
 
                     # decide the type of the value
                     # type = None
-                    print(value)
                     if value is None:
                         type = NodeType.Null
                     elif isinstance(value, bool):
@@ -335,8 +328,6 @@ class Engine():
                         node = self.create_new_node(type, pending_key)
                         node.set_value(value)
                         pending_key = None
-                    print(f'type is {type}')
-
                     self.pop()
             
             # if stack has remaining nodes, they are not closed, force pop them

@@ -247,7 +247,7 @@ def validate_if_then_else(errors: dict):
     if isinstance(then_value, bool): then_value = not then_value
     if isinstance(else_value, bool): else_value = not else_value
     
-    print(f'validate_if_then_else: {if_value}, {then_value}, {else_value}')
+    # print(f'validate_if_then_else: {if_value}, {then_value}, {else_value}')
     
     states = {'if': 'invalid' if if_value else 'valid',
                'then': 'invalid' if then_value else 'valid', 
@@ -335,12 +335,12 @@ def validate_properties(errors):
     return result, states
 
 def validate_items(errors):
-    print(f'validate_items: {errors}')
+    # print(f'validate_items: {errors}')
     prefixItems = errors.pop('prefixItems', None)
     items = errors.pop('items', None)
     cnt = 0
 
-    print(f'validate_items, {items}')
+    # print(f'validate_items, {items}')
     if prefixItems is not None and isinstance(prefixItems, list): cnt = len(prefixItems)
     elif items is not None and isinstance(items, list): cnt = len(items)
     elif items is not None:
@@ -388,8 +388,8 @@ def validate_items(errors):
         if items is not None:
             states[f'child({i})']['items'] = items_info
 
-    print(f'validate_items: {states}')
-    print(f'validate_items result: {result}')
+    # print(f'validate_items: {states}')
+    # print(f'validate_items result: {result}')
 
     return result, states
 
