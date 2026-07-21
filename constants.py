@@ -59,6 +59,13 @@ def get_fingerprint_arr(children: list):
     return hash(tuple([get_fingerprint_value(v) for v in children]))
 
 def get_fingerprint_value(value):
+    # bool be checked first
+    if isinstance(value, bool):
+        return hash(("boolean", value))
+
+    # JSON number semantics
+    if isinstance(value, (int, float)):
+        return hash(("number", float(value)))
     return hash((type(value), value))
 
 def calculate_const_value(const_value):
@@ -68,6 +75,9 @@ def calculate_const_value(const_value):
     elif isinstance(const_value, SchemaRef):
         const_dict = const_value.follow().content()
         const_dict = {k: calculate_const_value(v) for k, v in const_dict.items()}
+        return get_fingerprint_obj(const_dict)
+    elif isinstance(const_value, dict):
+        const_dict = {k: calculate_const_value(v) for k, v in const_value.items()}
         return get_fingerprint_obj(const_dict)
     else:
         return const_value

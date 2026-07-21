@@ -1,6 +1,7 @@
 import re
 from decimal import Decimal
 from constants import type_map, ValidationState
+from schema_builder import SchemaRef
 from constants import get_fingerprint_arr, get_fingerprint_obj, calculate_const_value
 
 
@@ -24,7 +25,10 @@ def validate_enum(value, param):
         print(f'cal: {item_val} =? {value_val}')
         if item_val == value_val:
         # if value == item and type(value) == type(item):
-            return True
+            if is_number(item_val) and is_number(value_val):
+                return True
+            if type(item_val) == type(value_val):
+                return True
     return False
 
 def is_number(value):
