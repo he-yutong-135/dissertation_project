@@ -282,8 +282,12 @@ class Engine():
             if len(self.stack) > 1:
                 self.force_pop()
         except CircuitBreakerException as e:
-            self.logs.add_log(NodeValidationRes(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
-                              'circuit_breaker'))
+            depth_error = NodeValidationRes(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
+                              'circuit_breaker')
+            
+            self.logs.add_log(depth_error)
+            self.stack[0].child_states[0].append(depth_error)
+            
             
         except Exception as e:
             print(f'error! {e}')

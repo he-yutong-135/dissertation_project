@@ -18,11 +18,9 @@ def validate_maximum(value, param):
     return True
 
 def validate_enum(value, param):
-    print(f'validate_enum: value: {value}, param: {param}')
     for item in param:
         item_val = calculate_const_value(item)
         value_val = calculate_const_value(value)
-        print(f'cal: {item_val} =? {value_val}')
         if item_val == value_val:
         # if value == item and type(value) == type(item):
             if is_number(item_val) and is_number(value_val):
@@ -168,8 +166,9 @@ def validate_contains(value, param, children_state, idx):
     return result
 
 # composition_validators
-def validate_anyOf(errors):
-    res_lst = errors if isinstance(errors, list) else [errors]
+# value will be a list
+def validate_anyOf(value):
+    res_lst = value if isinstance(value, list) else [value]
     result = False
     for res in res_lst:
         if bool(res) or res is None: # if one branch is valid
@@ -177,25 +176,25 @@ def validate_anyOf(errors):
             break
     return result
 
-def validate_allOf(errors):
-    res_lst = errors if isinstance(errors, list) else [errors]
+def validate_allOf(value):
+    res_lst = value if isinstance(value, list) else [value]
     for res in res_lst:
         if not bool(res) or  res is None: # if one branch is invalid
             return False
     return True
 
-def validate_oneOf(errors):
+def validate_oneOf(value):
     cnt = 0
-    for res in errors:
+    for res in value:
         if bool(res) or res is None: cnt += 1 # count the number of valid branches
     if cnt == 1:
         return True
     else:
         return False
 
-def validate_not(errors):
-    res = errors
-    if bool(res) or res is None: # no error -> return an error
+def validate_not(value):
+    print(f'validate_not: {value}')
+    if bool(value) or value is None: # no error -> return an error
         return False # invalid
     else:
         return True # valid, pass
@@ -311,8 +310,8 @@ def validate_property_group(errors):
             states[f'child({i})']['patternProperties'] = pattern_info
 
         additional_info = 'valid'
-        if bool(i_additional): 
-            additional_info = 'valid'
+        if not bool(i_additional): 
+            additional_info = 'invalid'
         if not matched:
             if not bool(i_additional): 
                 result = False

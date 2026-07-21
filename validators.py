@@ -126,12 +126,9 @@ class ValidationEngine():
             "idx": idx
         }
 
-        print(current_schema.schemas)
-        
         for key, param in current_schema.schemas.items():
             all_data["key"] = key
             all_data["param"] = param
-            print(f'validating with {key} {param}, {value}')
             
             # obtain type requirements and validation function
             type_requirements, func = keyword_types.get(key)
@@ -146,7 +143,7 @@ class ValidationEngine():
             # schema that requires the validation results from its child nodes
             if key in child_schema_keywords: 
                 # print(f'child_schema_keywords: {key}')
-                print(f'validating with {key} {param}, {value}, ERROR: {errors}, children: {children_state}')
+                # print(f'validating with {key} {param}, {value}, ERROR: {errors}, children: {children_state}')
                 if isinstance(param, bool):
                     if key == "contains" and len(value) == 0:
                         errors[key] = ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": key, "states": 'empty array'})
@@ -169,10 +166,9 @@ class ValidationEngine():
 
                     # increase idx after validation
                     idx.increase()
-                print(errors)
 
             elif isinstance(param, SchemaRef) and key not in ["$defs", "dependentRequired", "dependentSchemas"]:
-                print(f'SchemaRef param: {key}')
+                # print(f'SchemaRef param: {key}')
                 next_schema_id = param.value()
                 errors[key] = self.validate_schema(next_schema_id, value, children_state, idx=idx, my_type=my_type)
 
@@ -188,6 +184,8 @@ class ValidationEngine():
                     else:
                         next_schema_id = ref.value() 
                     errors[key].append(self.validate_schema(next_schema_id, value, children_state,idx=idx, my_type=my_type))
+            elif isinstance(param, bool) and key in composition_validators.keys():
+                errors[key] = param
             else:
                 # print(f'normal func: {key}')
                 if not func:
@@ -197,11 +195,12 @@ class ValidationEngine():
                     if not func(**filtered_kwargs): # validation fails: not True
                         errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
 
+        # print(f'before compress: {errors}')
         error = self.compress_errors(errors, schema_id)
         return error
     
     def compress_errors(self, errors, schema_id):
-        if isinstance(errors, NodeValidationRes): 
+        if isinstance(errors, NodeValidationRes) or isinstance(errors, bool): 
             return errors
         
         if isinstance(errors, ValidationError):
@@ -227,8 +226,14 @@ class ValidationEngine():
                 errors[k] = self.compress_errors(v, schema_id)
             
             for k, v in errors.items():
+                # print(f'errors: {errors}')
                 res_lst = v if isinstance(v, list) else [v]
-                res_states = [res.state() for res in res_lst]
+                res_states = []
+                for res in res_lst:
+                    if bool(res): res_states.append('valid')
+                    else: res_states.append('invalid')
+
+                # print(f'{k} -> {v}')
                 
                 if k in composition_validators.keys():
                     res = composition_validators.get(k)(v)
