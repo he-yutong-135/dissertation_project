@@ -21,7 +21,7 @@ class SchemaType(StrEnum):
 class ValidationState(StrEnum):
     NoMatch = 'No Match'
     def __bool__(self):
-        return False
+        return True # does not count as an error
 
 class Cursor:
     def __init__(self):

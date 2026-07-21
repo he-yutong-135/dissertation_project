@@ -56,21 +56,25 @@ class ValidationResNoLog():
     def __init__(self, errors=None, node_path = None, schema_id = None):
         self.has_error = False
         if isinstance(errors, ValidationError):
-            self.has_error = bool(errors)
+            self.has_error = errors.has_error()
         elif isinstance(errors, list):
             self.has_error = any(errors)
         self.path = node_path
         self.schema_id = schema_id
 
     def __bool__(self):
+        return not self.has_error # true means valid
+    
+    def has_error(self):
         return self.has_error
     
     def state(self):
-        if self: return 'invalid'
+        if self.has_error(): return 'invalid'
         else: return 'valid'
 
     def set_state(self, state):
-        self.has_error = state
+        if state is not None: return
+        self.has_error = state.has_error()
 
     def flip(self):
         self.has_error = not self.has_error
@@ -79,20 +83,17 @@ class ValidationResNoLog():
         if self: return self # already an error
         if isinstance(other, list):
             for result in other:
-                if result:
-                    self.set_state(True)
+                self.set_state(result)
+        else:
+            self.set_state(other)
         # elif isinstance(other, ValidationError) and other:
-        # elif isinstance(other, bool):
-        #     # when only a bool provided, false means invalid, true means invalid
-        #     if not other: self.set_state(True)
-        elif isinstance(other, ValidationError) and other:
-            self.set_state(True)
-        elif isinstance(other, ValidationResult) and other:
-            # self.errors.extend([e for e in other.errors if e])
-            self.set_state(True)
+        #     self.set_state(True)
+        # elif isinstance(other, ValidationResult) and other:
+        #     # self.errors.extend([e for e in other.errors if e])
+        #     self.set_state(True)
 
-        elif isinstance(other, ValidationResNoLog) and other:
-            self.set_state(True)
+        # elif isinstance(other, ValidationResNoLog) and other:
+        #     self.set_state(True)
 
         return self
     def __repr__(self):
@@ -113,27 +114,26 @@ class ValidationError():
         return self.__repr__()
     
     def __repr__(self):
-        # if no error
-        # if not bool(self): return ''
         template = ERROR_TEMPLATES[self.error_type]["template"]
         return f'{self.error_type}: {template.format(**self.context)}'
     
     def __bool__(self):
-        # return true if there is an error
+        # return true if there is no error
+        return self.error_type is ErrorType.NO_ERROR
+    
+    def has_error(self):
         return self.error_type is not ErrorType.NO_ERROR
     
     def state(self):
-        if self: return 'invalid'
+        if self.has_error(): return 'invalid'
         else: return 'valid'
 
     def __eq__(self, other):
         if isinstance(other, ValidationError):
-            
             if self.error_type == other.error_type and self.context == other.context:
                 return True
             else:
                 print(f'error mismatch!: self: {repr(self.context)}, other: {repr(other.context)}')
-            
         return False
     
 class ValidationResult():
@@ -153,9 +153,9 @@ class ValidationResult():
             for result in other: 
                 if result:
                     self.add(result) 
-        elif isinstance(other, ValidationError) and other:
+        elif isinstance(other, ValidationError) and other.has_error():
             self.errors.append(other)
-        elif isinstance(other, ValidationResult) and other:
+        elif isinstance(other, ValidationResult) and other.has_error():
             self.errors.extend(other.errors)
         return self
     
@@ -172,7 +172,17 @@ class ValidationResult():
         return self
 
     def __bool__(self):
-        return any(self.errors) # true if it contains an error
+        return not self.has_error() # true if it contains no error
+    
+    def has_error(self):
+        for e in self.errors:
+            if not bool(e):
+                return True
+            # if isinstance(e, ValidationError):
+            #     return True
+            # if e is False:
+            #     return True
+        return False 
     
     def __len__(self):
         return len(self.errors)
@@ -188,9 +198,8 @@ class ValidationResult():
        return self.__repr__()
     
     def state(self):
-        if self: return 'invalid'
+        if self.has_error(): return 'invalid'
         else: return 'valid'
-    
     
 def assert_single_log(validationResult, path, errors):
     errors = errors if isinstance(errors, list) else [errors]

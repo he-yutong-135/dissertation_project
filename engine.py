@@ -147,8 +147,9 @@ class Engine():
 
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
+        # print(f'pop: {node.my_states}')
         for i in range(len(node.my_schema_id_lst)):
-            if node.my_states[i]:
+            if not node.my_states[i]:
                 self.logs.add_log(node.my_states[i], node.get_path(), str(node))
 
         # print(f'pop: stack: {len(self.stack)}, parent children: {node.parent.children}')
@@ -170,7 +171,7 @@ class Engine():
                     s += unclose_error
 
             for i in range(len(node.my_schema_id_lst)):
-                if bool(node.my_states[i]):
+                if not bool(node.my_states[i]):
                     self.logs.add_log(node.my_states[i], node.get_path(), str(node))
 
             node.parent.register_state(node)
@@ -291,7 +292,7 @@ class Engine():
             top_obj_state = self.stack[0]
             
             if len(top_obj_state.child_states[0]) == 0:
-                return False, "valid"
+                return True, "valid"
             else:
                 return bool(top_obj_state.child_states[0][0]), top_obj_state.child_states[0][0].state()
 
