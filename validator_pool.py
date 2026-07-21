@@ -1,7 +1,7 @@
 import re
 from decimal import Decimal
 from constants import type_map, ValidationState
-from constants import get_fingerprint_arr, get_fingerprint_obj
+from constants import get_fingerprint_arr, get_fingerprint_obj, calculate_const_value
 
 
 def validate_minimum(value, param):
@@ -17,8 +17,13 @@ def validate_maximum(value, param):
     return True
 
 def validate_enum(value, param):
+    print(f'validate_enum: value: {value}, param: {param}')
     for item in param:
-        if value == item and type(value) == type(item):
+        item_val = calculate_const_value(item)
+        value_val = calculate_const_value(value)
+        print(f'cal: {item_val} =? {value_val}')
+        if item_val == value_val:
+        # if value == item and type(value) == type(item):
             return True
     return False
 
@@ -144,7 +149,7 @@ def accept():
     return True
 
 def validate_none(param):
-    return not param
+    return param
 
 def validate_contains(value, param, children_state, idx):
     if len(value) == 0 and isinstance(param, bool):
@@ -157,10 +162,6 @@ def validate_contains(value, param, children_state, idx):
             result = True
             break
     return result
-
-def validate_items(value, children_state, idx):
-    if len(value) == 0:
-        return True
 
 # composition_validators
 def validate_anyOf(errors):
@@ -245,7 +246,7 @@ def validate_if_then_else(errors: dict):
             return bool(else_value), states
         
 
-def validate_properties(errors):
+def validate_property_group(errors):
     # print(f'validate_properties: {errors}')
     cnt = 0
     properties = errors.pop('properties', None)
@@ -267,7 +268,7 @@ def validate_properties(errors):
         matched = False
         i_properties = properties[i] if properties else None
         i_patternProperties = patternProperties[i] if patternProperties else None
-        if additional:
+        if additional is not None:
             if isinstance(additional, list):
                 i_additional = additional[i]
             else:
@@ -415,7 +416,7 @@ keyword_types = {
     "uniqueItems": ("array", validate_unique_items),
 
     # Object
-    "property_group": ("object", validate_properties), # added
+    "property_group": ("object", validate_property_group), # added
     "properties": ("object", None),
     "patternProperties": ("object", None),
     "additionalProperties": ("object", None),

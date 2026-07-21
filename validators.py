@@ -125,10 +125,13 @@ class ValidationEngine():
             "children_state": children_state,
             "idx": idx
         }
+
+        print(current_schema.schemas)
         
         for key, param in current_schema.schemas.items():
             all_data["key"] = key
             all_data["param"] = param
+            print(f'validating with {key} {param}, {value}')
             
             # obtain type requirements and validation function
             type_requirements, func = keyword_types.get(key)
@@ -139,16 +142,6 @@ class ValidationEngine():
             if func is not None:
                 sig = inspect.signature(func)
                 # filtered_kwargs = {k: v for k, v in all_data.items() if k in sig.parameters}
-
-                # print(f'func: {key}, {param} of type({type(param)})')
-
-            # if type matches, start validating
-            # if isinstance(param, bool) and key not in accept_bool_param:
-            #     # if the value is empty, like an empty array, validation
-            #     if not param: # False
-            #         errors[key] = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {param}'}})
-            #     else:
-            #         errors[key] = True  
             
             # schema that requires the validation results from its child nodes
             if key in child_schema_keywords: 
@@ -159,7 +152,7 @@ class ValidationEngine():
                         errors[key] = ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": key, "states": 'empty array'})
                     elif key == "items" and len(value) == 0:
                         errors[key] = True
-                    elif not bool(param):
+                    elif not param:
                         errors[key] = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {param}'}})
                         # print(f'key: {key}: {param} -> {errors[key]}')
                     else:
@@ -176,12 +169,10 @@ class ValidationEngine():
 
                     # increase idx after validation
                     idx.increase()
-            # elif key is None:
-            #     if not param:
-            #         errors[key] = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {param}'}})
+                print(errors)
 
-            elif isinstance(param, SchemaRef) and key not in ["$defs", "dependentRequired"]:
-                # print(f'SchemaRef param: {key}')
+            elif isinstance(param, SchemaRef) and key not in ["$defs", "dependentRequired", "dependentSchemas"]:
+                print(f'SchemaRef param: {key}')
                 next_schema_id = param.value()
                 errors[key] = self.validate_schema(next_schema_id, value, children_state, idx=idx, my_type=my_type)
 
@@ -206,9 +197,7 @@ class ValidationEngine():
                     if not func(**filtered_kwargs): # validation fails: not True
                         errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
 
-        # print(errors)
         error = self.compress_errors(errors, schema_id)
-        # print(error)
         return error
     
     def compress_errors(self, errors, schema_id):
@@ -309,13 +298,7 @@ class ValidationEngine():
                     matches = []
                     # print(f'collect_schemas_for_me patternProperties: {schema}, key: {my_key}')
                     for k, v in schema.items():
-                        print("pattern:", repr(k))
                         if re.search(k, my_key):
-                            # if isinstance(v, bool):
-                            #     if not v:
-                            #         v = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {schema_ref}'}})
-                            #     else:
-                            #         v = False
                             matches.append(v)
                     # print(f'patternProperties matches: {matches}')
                     if len(matches) > 0:
@@ -323,15 +306,6 @@ class ValidationEngine():
                 else:
                     # properties or prefixItems
                     schema_ref = schema.get(my_key, None)
-
-                    # sometimes schema provides a boolean indicating if it is valid or not
-                    # if isinstance(schema_ref, bool):
-                    #     if not schema_ref:
-                    #     #    schema_ref = ValidationError()
-                    #     # else:
-                    #         schema_ref = ValidationError(ErrorType.DETERMINED_ERROR, {"schema": {f'{key}: {schema_ref}'}})
-                    #     else:
-                    #         schema_ref = False
 
                 # if there are matches
                 if schema_ref is not None:

@@ -109,19 +109,14 @@ def collect_identifiers(schema_ref, base_uri=""):
     visited = set()
 
     def visit(ref, current_base):
-
         if not isinstance(ref, SchemaRef):
             return
-
         idx = ref.value()
-
         if idx in visited:
             return
 
         visited.add(idx)
-
         node = schema_storage[idx]
-
         schema_id = node.schemas.get("$id")
 
         if schema_id:
@@ -138,7 +133,6 @@ def collect_identifiers(schema_ref, base_uri=""):
             else:
                 anchor_storage[anchor] = ref
 
-
         for value in node.schemas.values():
             if isinstance(value, SchemaRef):
                 visit(value, current_base)
@@ -152,8 +146,6 @@ def collect_identifiers(schema_ref, base_uri=""):
                 for item in value.values():
                     if isinstance(item, SchemaRef):
                         visit(item, current_base)
-
-
     visit(schema_ref, base_uri)
 
 def parse_array(token_stream):
