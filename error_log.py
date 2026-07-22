@@ -86,15 +86,6 @@ class ValidationResNoLog():
                 self.set_state(result)
         else:
             self.set_state(other)
-        # elif isinstance(other, ValidationError) and other:
-        #     self.set_state(True)
-        # elif isinstance(other, ValidationResult) and other:
-        #     # self.errors.extend([e for e in other.errors if e])
-        #     self.set_state(True)
-
-        # elif isinstance(other, ValidationResNoLog) and other:
-        #     self.set_state(True)
-
         return self
     def __repr__(self):
         error_log = ''
@@ -105,9 +96,15 @@ class ValidationResNoLog():
        return self.__repr__()
     
 class ValidationError():
-    def __init__(self, error_type: ErrorType, context = None):
+    def __init__(self, error_type, context = None):
         # print('ValidationError created')
-        self.error_type: ErrorType = error_type
+        if isinstance(error_type, bool):
+            if error_type:
+                self.error_type = ErrorType.NO_ERROR
+            else:
+                self.error_type = ErrorType.DETERMINED_ERROR
+        else:
+            self.error_type = error_type
         self.context = {} if context is None else context
 
     def __str__(self):
@@ -157,6 +154,8 @@ class ValidationResult():
             self.errors.append(other)
         elif isinstance(other, ValidationResult) and other.has_error():
             self.errors.extend(other.errors)
+        # elif isinstance(other, bool) and not other:
+        #     self.errors
         return self
     
     def add_info(self, node_path = None, schema_id = None):
@@ -178,10 +177,6 @@ class ValidationResult():
         for e in self.errors:
             if not bool(e):
                 return True
-            # if isinstance(e, ValidationError):
-            #     return True
-            # if e is False:
-            #     return True
         return False 
     
     def __len__(self):
@@ -219,7 +214,7 @@ def assert_all_logs(logs, error_dict: dict):
         assert_single_log(log, path, target_errors)
 
 def format_node_info(path, info):
-    return f'invalid json item: path({path}), value({info})'
+    return f'invalid json item! path: {path}, value: {info}'
     
 class ValidationLog():
     def __init__(self, log_file = None):
@@ -230,7 +225,6 @@ class ValidationLog():
         self.log_print.append('--- Validation Error Log ---\n')
 
     def add_log(self, errors, path=None, info=None):
-        
         if isinstance(errors, ValidationError): errors = ValidationResult(errors)
         self.log_print.append(format_node_info(path, info))
         self._logs.append(errors)

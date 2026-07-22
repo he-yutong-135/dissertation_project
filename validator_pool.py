@@ -79,9 +79,15 @@ def validate_multiple_of(value, param):
     return value_scaled % multiple_scaled == 0
 
 def validate_const(value, param):
-    if isinstance(value, dict): value = get_fingerprint_obj(value)
-    if isinstance(value, list): value = get_fingerprint_arr(value)
-    return value == param
+    const_val = calculate_const_value(param)
+    value_val = calculate_const_value(value)
+    # return value == param
+    if const_val == value_val:
+        if is_number(const_val) and is_number(value_val):
+            return True
+        if type(const_val) == type(value_val):
+            return True
+    return False
 
 def validate_exclusive_maximum(value, param):
     if isinstance(param, bool): return param
@@ -199,9 +205,8 @@ def validate_not(value):
     else:
         return True # valid, pass
     
-def validate_ref(errors):
-    res = errors
-    if bool(res) or  res is None: # no error
+def validate_ref(value):
+    if bool(value) or value is None: # no error
         return True # valid
     else:
         return False # invalid
@@ -214,7 +219,7 @@ composition_validators = {
     "$ref": validate_ref,
     # "if_then_else": validate_if_then_else
 }
-composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref"]
+composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref", "unevaluatedItems", "unevaluatedProperties"]
 composition_keywords_lst = ["anyOf", "allOf", "oneOf"]
 
 array_keywords = [ "contains", "prefixItems", "items"]
@@ -250,12 +255,10 @@ def validate_if_then_else(errors: dict):
         
 
 def validate_property_group(errors):
-    # print(f'validate_properties: {errors}')
     cnt = 0
     properties = errors.pop('properties', None)
     patternProperties = errors.pop('patternProperties', None)
     additional = errors.pop('additionalProperties', None)
-    # print(f'validate_properties additional: {additional}')
 
     if properties is not None and isinstance(properties, list): cnt = len(properties)
     elif patternProperties is not None and isinstance(patternProperties, list): cnt = len(patternProperties)
@@ -330,7 +333,8 @@ def validate_items_group(errors):
     if prefixItems is not None and isinstance(prefixItems, list): cnt = len(prefixItems)
     elif items is not None and isinstance(items, list): cnt = len(items)
     elif items is not None:
-        return bool(items), {'items': items.state()}
+        item_state = 'valid' if bool(items) else 'invalid'
+        return bool(items), {'items': item_state}
     else: return True, {}
     result = True
     states = {}
@@ -376,7 +380,16 @@ def validate_items_group(errors):
 
     return result, states
 
+def evaluate_unevaluated_items(value, param, children_state):
+    if len(value) == 0: return True
+    print(children_state)
 
+    return True
+
+def evaluate_unevaluated_properties(value, param, children_state):
+    if len(value) == 0: return True
+    print(children_state)
+    return True
 
 # key -> (type requirements, validation strategy)
 keyword_types = {
@@ -432,13 +445,13 @@ keyword_types = {
     "oneOf": (None, validate_oneOf),
     "not": (None, validate_not),
     'if_then_else': (None, validate_if_then_else), # added
-    "if": (None, validate_if_then_else),
+    "if": (None, None),
     "then": (None, None),
     "else": (None, None),
 
     # Not implemented
-    "unevaluatedProperties": (None, accept),
-    "unevaluatedItems": (None, accept),
+    "unevaluatedProperties": (None, evaluate_unevaluated_properties),
+    "unevaluatedItems": (None, evaluate_unevaluated_items),
     "dynamicRef": (None, accept),
     "maxContains": (None, accept),
     "minContains": (None, accept),
@@ -447,6 +460,9 @@ keyword_types = {
     "format": ("string", accept),
     "propertyNames": (None, accept),
     "dependentSchemas": (None, accept),
+    "contentMediaType": (None, accept),
+    "contentEncoding": (None, accept),
+    "contentSchema": (None, accept)
 }
 
 def is_type(my_type, expect_type):

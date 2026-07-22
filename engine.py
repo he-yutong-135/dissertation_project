@@ -195,9 +195,11 @@ class Engine():
                 
             if isinstance(schemas, tuple):
                 validationRes = NodeValidationRes()
+                print(schemas)
                 for schema_id in schemas:
                     validationRes += self.validators.validate_schema(schema_id, my_value, node.child_states, my_type=node.type)
                 node.my_states.append(validationRes)  
+                print(node.my_states)
 
             elif isinstance(schemas, SchemaRef):
                 node.my_states.append(self.validators.validate_schema(schemas, my_value, node.child_states, my_type=node.type))
@@ -282,15 +284,14 @@ class Engine():
             if len(self.stack) > 1:
                 self.force_pop()
         except CircuitBreakerException as e:
-            depth_error = NodeValidationRes(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}), 
-                              'circuit_breaker')
-            
-            self.logs.add_log(depth_error)
+            depth_error = NodeValidationRes(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}))
+            self.logs.add_log(depth_error, self.current_node.get_path(), str(self.current_node))
             self.stack[0].child_states[0].append(depth_error)
             
-            
         except Exception as e:
-            print(f'error! {e}')
+            error = NodeValidationRes(ValidationError(ErrorType.UNEXPECTED, {'value': f'runtime error: \n{e}'}))
+            self.logs.add_log(error, self.current_node.get_path(), str(self.current_node))
+            self.stack[0].child_states[0].append(error)
         finally:
             self.logs.report(self.circuit_breaker.max_recorded_depth)
             top_obj_state = self.stack[0]
