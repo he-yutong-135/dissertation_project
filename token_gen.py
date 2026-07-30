@@ -23,6 +23,7 @@ json_skip_symbols = (' ', '\t', '\n', '\r')
 class Token:
     type: TokenType
     content: any = None
+    line: int = None
 
     def is_start_object(self):
         return self.type == TokenType.START_OBJECT
@@ -44,28 +45,50 @@ class Token:
 
     def __repr__(self):
         repr = f"{self.type.name}: ({self.content})"
-        if self.content is None:
+        if not (self.is_key() or self.is_value()):
             repr =  f"{self.type.name}"
-        return '{' + repr + '}'
+        return '{' + repr + f' [line: {self.line}]' + '}'
+
+class Char:
+    def __init__(self, v, l):
+        self.value = v
+        self.line = l
+
+    def __str__(self):
+        return f'char({self.value, self.line})'
+
+    def __repr__(self):
+        return self.__str__()
 
 class CharStream:
     def __init__(self, stream):
         self.stream = stream
         self.buf = []
+        self.line = 1
 
     def get(self):
         if self.buf:
             return self.buf.pop()
-        return self.stream.read(1)
+        c = self.stream.read(1)
+        char = Char(c, self.line)
+        
+        if char.value == "\n":
+            self.line += 1
 
-    def pushback(self, ch):
-        self.buf.append(ch)
+        # print(f'get: {char}')
+
+        return char
+
+    def pushback(self, char):
+        # store a char item
+        self.buf.append(char)
 
 
 # lexical analysis: split input into raw tokens (structural symbols, strings, raw values)
 def raw_lexer(stream):
     while True:
-        c = stream.get()
+        char = stream.get()
+        c = char.value
         if c == "":
             return
         if c in json_skip_symbols:
@@ -73,47 +96,47 @@ def raw_lexer(stream):
 
         # structural symbols
         if c in "{}[]:,":
-            yield ("STRUCT", c)
+            yield ("STRUCT", char)
         elif c == '"':
             s = read_string(stream)
             # incomplete strings are not processed
             if s is not None:
-                yield ("STRING", s)
+                yield ("STRING", Char(s, char.line))
         else:
-            yield ("RAW", read_value(c, stream))
+            yield ("RAW", Char(read_value(char, stream), char.line))
 
 # read a JSON string
 def read_string(char_stream: CharStream):
     buf = []
 
     while True:
-        c = char_stream.get()
+        char = char_stream.get()
+        c = char.value
 
         if c == '':
-            # raise ValueError("Unterminated string")
             return None
 
         if c == '"':
             break
 
         if c == '\\':
-            esc = char_stream.get()
+            esc = char_stream.get().value
 
             if esc == '':
                 raise ValueError("Unterminated escape sequence")
 
             # unicode escape: \uXXXX
             if esc == 'u':
-                hex_digits = ''.join(char_stream.get() for _ in range(4))
+                hex_digits = ''.join(char_stream.get().value for _ in range(4))
                 code = int(hex_digits, 16)
 
                 # high surrogate
                 if 0xD800 <= code <= 0xDBFF:
 
-                    if char_stream.get() != '\\' or char_stream.get() != 'u':
+                    if char_stream.get().value != '\\' or char_stream.get().value != 'u':
                         raise ValueError("Expected low surrogate")
 
-                    low_hex = ''.join(char_stream.get() for _ in range(4))
+                    low_hex = ''.join(char_stream.get().value for _ in range(4))
                     low = int(low_hex, 16)
 
                     if not (0xDC00 <= low <= 0xDFFF):
@@ -153,17 +176,19 @@ def read_string(char_stream: CharStream):
     return ''.join(buf)
 
 # read a JSON raw value (number, true, false, null) 
-def read_value(first_char:str, char_stream: CharStream):
-    buf = [first_char]
+def read_value(first_char: Char, char_stream: CharStream):
+    buf = [first_char.value]
+
 
     while True:
-        c = char_stream.get()
+        char = char_stream.get()
+        c = char.value
 
         if c == '':
             break
 
         if c in json_end_symbols:
-            char_stream.pushback(c)
+            char_stream.pushback(char)
             break
 
         buf.append(c)
@@ -190,28 +215,29 @@ def token_gen(tokens):
     next_state = "KEY"
     stack = [] # to track whether we are in an object or array context
 
-    for type, value in tokens:
+    for type, char in tokens:
         # print(f"DEBUG: type={type}, value={value}, next_state={next_state}, stack={stack}")
+        value = char.value
 
         ## structural symbols -> tokens and state transitions
         if value == '{':
             stack.append('{')
-            yield Token(TokenType.START_OBJECT)
+            yield Token(TokenType.START_OBJECT, line=char.line)
             next_state = "KEY"
 
         elif value == '[':
             stack.append('[')
-            yield Token(TokenType.START_ARRAY)
+            yield Token(TokenType.START_ARRAY, line=char.line)
             next_state = "VALUE"
 
         elif value == '}':
             stack.pop()
-            yield Token(TokenType.END_OBJECT)
+            yield Token(TokenType.END_OBJECT, line=char.line)
             next_state = "KEY_OR_END"
 
         elif value == ']':
             stack.pop()
-            yield Token(TokenType.END_ARRAY)
+            yield Token(TokenType.END_ARRAY, line=char.line)
             next_state = "KEY_OR_END"
 
         elif value == ':':
@@ -226,20 +252,20 @@ def token_gen(tokens):
         # string / raw value -> key or value
         if type in ("STRING", "RAW"):
             if not stack:
-                yield Token(TokenType.VALUE, value)
+                yield Token(TokenType.VALUE, value, line=char.line)
                 continue
 
             # if in an object context
             if stack[-1] == "{":
                 if next_state == "KEY":
-                    yield Token(TokenType.KEY, normalize_key(value))
+                    yield Token(TokenType.KEY, normalize_key(value), line=char.line)
                     next_state = "COLON"
                 elif next_state == "VALUE":
-                    yield Token(TokenType.VALUE, value)
+                    yield Token(TokenType.VALUE, value, line=char.line)
                     next_state = "COMMA_OR_END"
             elif stack[-1] == "[":
                 if next_state == "VALUE":
-                    yield Token(TokenType.VALUE, value)
+                    yield Token(TokenType.VALUE, value, line=char.line)
                     next_state = "COMMA_OR_END"
                 
 def token_stream_from_stream(stream):

@@ -213,8 +213,15 @@ def assert_all_logs(logs, error_dict: dict):
         assert target_errors is not None, f'extra errors added: {log.path}({log.errors})'
         assert_single_log(log, path, target_errors)
 
-def format_node_info(path, info):
-    return f'invalid json item! path: {path}, value: {info}'
+def format_node_info(path, info, line):
+    if len(line) == 2:
+        if line[0] != line[1]:
+            line_str = f'{line[0]} ~ {line[1]}'
+        else:
+            line_str = line[0]
+    else:
+        line_str = line
+    return f'invalid json item! line: {line_str}, path: {path}, value: {info}'
     
 class ValidationLog():
     def __init__(self, log_file = None):
@@ -224,9 +231,9 @@ class ValidationLog():
         # start logging
         self.log_print.append('--- Validation Error Log ---\n')
 
-    def add_log(self, errors, path=None, info=None):
+    def add_log(self, errors, path=None, info=None, line=None):
         if isinstance(errors, ValidationError): errors = ValidationResult(errors)
-        self.log_print.append(format_node_info(path, info))
+        self.log_print.append(format_node_info(path, info, line))
         self._logs.append(errors)
         self.log_print.append(str(errors))
 

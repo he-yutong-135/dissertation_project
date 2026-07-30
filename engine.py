@@ -12,6 +12,7 @@ class Node:
     def __init__(self, key=None):
         self.key = key
         self.value = None # primitive only
+        self.line = None
         self.parent = None
         self.type = NodeType.Object # OBJECT / ARRAY / VALUE
         self.children = {} # dict or list
@@ -54,15 +55,15 @@ class Node:
         return ''.join(reversed(parts)).lstrip('.')
 
     def __repr__(self):
-        value = ''
+        value = f'{self.type}'
         if self.type is NodeType.Object and self.children:
-            value = f'{self.type}[{', '.join(self.children.keys())}]'
+            value += f'[{', '.join(self.children.keys())}]'
         elif self.type is NodeType.Array and self.children:
             child_str = [str(x) for x in self.children.values()]
-            value = f'{self.type}[{', '.join(child_str)}]'
+            value += f'[{', '.join(child_str)}]'
         else:
-            value = f'{self.type}[{self.value}]'
-        return f'{value}'
+            value += f'[{self.value}]'
+        return value
 
     def set_schema(self, id):
         self.schema_id = id
@@ -129,9 +130,8 @@ class Engine():
         self.current_node = node
         self.stack.append(node)
         self.circuit_breaker.on_push()
-        # print(f'push: {node}')
 
-    def pop(self):
+    def pop(self, end_line):
         # print(f'pop: {len(self.stack)}')
         node = self.stack.pop()
         # ref = weakref.ref(node)
@@ -147,35 +147,33 @@ class Engine():
 
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
-        # print(f'pop: {node.my_states}')
         my_errors = NodeValidationRes()
+        node.line = (node.line, end_line)
         for i in range(len(node.my_schema_id_lst)):
             if not node.my_states[i]:
                 my_errors += node.my_states[i]
-                self.logs.add_log(node.my_states[i], node.get_path(), str(node))
+                self.logs.add_log(node.my_states[i], node.get_path(), str(node), node.line)
 
-        # print(f'pop: stack: {len(self.stack)}, parent children: {node.parent.children}')
         node.parent = None # break the reference to its parent 
-        
         node.children = None # break the reference to its children
         node.my_states = None
         node.child_states = None
         node = None
 
-    def force_pop(self):
+    def force_pop(self, end_line):
         unclose_error = NodeValidationRes(ValidationError(ErrorType.UNCLOSED))
         while(len(self.stack) > 1):
             node = self.stack.pop()
+            node.line = (node.line, end_line)
             if len(node.my_states) == 0:
                 node.my_states.append(unclose_error)
             else:
                 for s in node.my_states:
                     s += unclose_error
 
-            
             for i in range(len(node.my_schema_id_lst)):
                 if not bool(node.my_states[i]):
-                    self.logs.add_log(node.my_states[i], node.get_path(), str(node))
+                    self.logs.add_log(node.my_states[i], node.get_path(), str(node), node.line)
 
             node.parent.register_state(node)
             
@@ -211,10 +209,11 @@ class Engine():
                 # if schema is a boolean or ValidationState, no need for verification, append directly
                 node.my_states.append(schemas)
 
-    def create_new_node(self, type, key=None):
+    def create_new_node(self, type, key=None, line=None):
         if key: node = Node(key)
         else: node = Node(type) # if no key provided, use its type as the default key
         node.type = type
+        node.line = line
         node.parent = self.current_node
         
         node.parent.add_child(node)
@@ -226,8 +225,10 @@ class Engine():
     def run(self):
         pending_key = None
         type = NodeType.Object
+        last_line = None
         try:
             for token in self.token_stream:
+                last_line = token.line
                 if token.is_start_object():
                     if pending_key is None and len(self.stack) == 1:
                         key = 'top_object'
@@ -237,19 +238,19 @@ class Engine():
                     else:
                         key = pending_key
                     
-                    node = self.create_new_node(NodeType.Object, key)
+                    node = self.create_new_node(NodeType.Object, key, token.line)
                     # node.parent.add_child(node)
                     pending_key = None
 
                 if token.is_start_array():
-                    node = self.create_new_node(NodeType.Array, pending_key)
+                    node = self.create_new_node(NodeType.Array, pending_key, token.line)
                     pending_key = None
 
                 if token.is_end_object():
-                    self.pop()
+                    self.pop(token.line)
 
                 if token.is_end_array():
-                    self.pop()
+                    self.pop(token.line)
 
                 if token.is_key():
                     pending_key = token.content
@@ -274,26 +275,27 @@ class Engine():
                     # if it is in an array
                     if parent.type is NodeType.Array:
                         # print(f'pushing child into array object {parent}->{value}')
-                        node = self.create_new_node(type)
+                        node = self.create_new_node(type, line=token.line)
                         node.set_value(value)
                     else:
                         # it is in an object
-                        node = self.create_new_node(type, pending_key)
+                        node = self.create_new_node(type, pending_key, line=token.line)
                         node.set_value(value)
                         pending_key = None
-                    self.pop()
+                    self.pop(token.line)
             
             # if stack has remaining nodes, they are not closed, force pop them
             if len(self.stack) > 1:
-                self.force_pop()
+                self.force_pop(last_line)
+
         except CircuitBreakerException as e:
             depth_error = NodeValidationRes(ValidationError(ErrorType.DEPTH_ERROR, {'depth': self.circuit_breaker.maximum_allowed_depth}))
-            self.logs.add_log(depth_error, self.current_node.get_path(), str(self.current_node))
+            self.logs.add_log(depth_error, self.current_node.get_path(), str(self.current_node), line=self.current_node.line)
             self.stack[0].child_states[0].append(depth_error)
             
         except Exception as e:
             error = NodeValidationRes(ValidationError(ErrorType.UNEXPECTED, {'value': f'runtime error: \n{e}'}))
-            self.logs.add_log(error, self.current_node.get_path(), str(self.current_node))
+            self.logs.add_log(error, self.current_node.get_path(), str(self.current_node), line=self.current_node.line)
             self.stack[0].child_states[0].append(error)
         finally:
             self.logs.report(self.circuit_breaker.max_recorded_depth)
