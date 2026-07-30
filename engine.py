@@ -4,7 +4,7 @@ from error_log import ValidationResult, ValidationError, ErrorType, ValidationLo
 from validators import ValidationEngine
 from constants import NodeType, schema_file
 from circuit_breaker import CircuitBreaker, CircuitBreakerException
-from constants import get_fingerprint_obj, get_fingerprint_arr, needs_log, get_fingerprint_value
+from constants import get_fingerprint_obj, get_fingerprint_arr, needs_log
 
 NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
 
@@ -148,8 +148,10 @@ class Engine():
         # move the current force to its parent, which is to be 
         self.current_node = node.parent
         # print(f'pop: {node.my_states}')
+        my_errors = NodeValidationRes()
         for i in range(len(node.my_schema_id_lst)):
             if not node.my_states[i]:
+                my_errors += node.my_states[i]
                 self.logs.add_log(node.my_states[i], node.get_path(), str(node))
 
         # print(f'pop: stack: {len(self.stack)}, parent children: {node.parent.children}')
@@ -170,6 +172,7 @@ class Engine():
                 for s in node.my_states:
                     s += unclose_error
 
+            
             for i in range(len(node.my_schema_id_lst)):
                 if not bool(node.my_states[i]):
                     self.logs.add_log(node.my_states[i], node.get_path(), str(node))

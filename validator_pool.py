@@ -199,7 +199,6 @@ def validate_oneOf(value):
         return False
 
 def validate_not(value):
-    print(f'validate_not: {value}')
     if bool(value) or value is None: # no error -> return an error
         return False # invalid
     else:

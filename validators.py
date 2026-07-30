@@ -39,8 +39,10 @@ class ValidationEngine():
             return
 
         target = self.resolve_ref(ref, schema.base_uri)
+        # if can't find one, just accept it blindly
         if target is None:
-            raise ValueError(f"Unknown $ref {ref}")
+            target = ACCEPT_NODE.id
+        
         schema.schemas["$ref"] = target
 
     def resolve_ref(self, ref, base_uri):
@@ -67,6 +69,7 @@ class ValidationEngine():
 
         if fragment.startswith("/"):
             return self.find_pointer(resource, fragment)
+
 
         return self.anchor_storage.get(f"{resource}#{fragment}")
     

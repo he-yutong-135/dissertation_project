@@ -190,7 +190,6 @@ def build_schema(file_name):
     if isinstance(root, SchemaRef):
         collect_identifiers(root)
 
-    # print(schema_storage)
     return schema_storage, anchor_storage, id_storage
 
 if __name__ == "__main__":
