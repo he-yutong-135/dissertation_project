@@ -1,10 +1,9 @@
-from schema_builder import build_schema, SchemaRef
-from token_gen import token_stream
-from error_log import ValidationResult, ValidationError, ErrorType, ValidationLog, ValidationResNoLog
-from validators import ValidationEngine
-from constants import NodeType, schema_file
-from circuit_breaker import CircuitBreaker, CircuitBreakerException
-from constants import get_fingerprint_obj, get_fingerprint_arr, needs_log
+from .schema_builder import build_schema, SchemaRef
+from .token_gen import token_stream
+from .error_log import ValidationResult, ValidationError, ErrorType, ValidationLog, ValidationResNoLog
+from .validators import ValidationEngine
+from .constants import NodeType, get_fingerprint_obj, get_fingerprint_arr, needs_log
+from .circuit_breaker import CircuitBreaker, CircuitBreakerException
 
 NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
 
@@ -96,7 +95,6 @@ class Node:
         assert len(node.my_states) == len(self.child_states)
         for i in range(len(node.my_states)):
             self.child_states[i].append(node.my_states[i])
-        # print(len(self.child_states), len(node.my_states))
 
 class Engine():
     def __init__(self, schema=None, target=None, max_depth=None, log_file_name=None):
@@ -107,7 +105,6 @@ class Engine():
         self.stack = [Node('root')] # adding a dummy node to eliminate the need of boundary checking
 
         self.schema_storage, self.anchor_storage, self.id_storage = build_schema(schema)
-        # print(f'engine: {target}')
         self.token_stream = token_stream(target)
         self.validators = ValidationEngine(self.schema_storage, self.anchor_storage, self.id_storage)
         self.circuit_breaker = CircuitBreaker(max_depth)
@@ -115,11 +112,9 @@ class Engine():
         self.current_node = self.stack[0]
 
     def push(self, node):
-        # print(f'push: stack: {len(self.stack)}, parent children: {node.parent.children}')
 
         # bind the node with its schema
         schema_id_lst = self.validators.collect_schemas_for_me(node.parent.children_schema_id_lst, node.key)
-        # print(schema_id_lst)
         if schema_id_lst is not None:
             node.my_schema_id_lst = schema_id_lst
         node.children_schema_id_lst = self.validators.collect_schemas_for_children(node.my_schema_id_lst, node.type)
@@ -132,7 +127,6 @@ class Engine():
         self.circuit_breaker.on_push()
 
     def pop(self, end_line):
-        # print(f'pop: {len(self.stack)}')
         node = self.stack.pop()
         # ref = weakref.ref(node)
         self.circuit_breaker.on_pop()
@@ -178,7 +172,6 @@ class Engine():
             node.parent.register_state(node)
             
     def verify_node(self, node: Node):
-        # print(f'verify: {node} with type: {node.type}: {node.my_schema_id_lst}')
         my_value = None
         
         if node.type is NodeType.Object:
@@ -196,11 +189,9 @@ class Engine():
                 
             if isinstance(schemas, tuple):
                 validationRes = NodeValidationRes()
-                print(schemas)
                 for schema_id in schemas:
                     validationRes += self.validators.validate_schema(schema_id, my_value, node.child_states, my_type=node.type)
                 node.my_states.append(validationRes)  
-                print(node.my_states)
 
             elif isinstance(schemas, SchemaRef):
                 node.my_states.append(self.validators.validate_schema(schemas, my_value, node.child_states, my_type=node.type))
@@ -210,7 +201,7 @@ class Engine():
                 node.my_states.append(schemas)
 
     def create_new_node(self, type, key=None, line=None):
-        if key: node = Node(key)
+        if key is not None: node = Node(key)
         else: node = Node(type) # if no key provided, use its type as the default key
         node.type = type
         node.line = line
@@ -274,7 +265,6 @@ class Engine():
 
                     # if it is in an array
                     if parent.type is NodeType.Array:
-                        # print(f'pushing child into array object {parent}->{value}')
                         node = self.create_new_node(type, line=token.line)
                         node.set_value(value)
                     else:
@@ -305,7 +295,3 @@ class Engine():
                 return True, "valid"
             else:
                 return bool(top_obj_state.child_states[0][0]), top_obj_state.child_states[0][0].state()
-
-if __name__ == '__main__':
-    engine = Engine(schema=schema_file, target='data_unclosed_error.json', log_file_name='validation_log.txt', max_depth=10)
-    engine.run()

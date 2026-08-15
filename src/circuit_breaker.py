@@ -1,9 +1,7 @@
-from constants import MAX_DEPTH
-
 class CircuitBreaker:
-    def __init__(self, maximum_allowed_depth=None):
+    def __init__(self, maximum_allowed_depth):
         self.depth = 0
-        self.maximum_allowed_depth = maximum_allowed_depth if maximum_allowed_depth is not None else MAX_DEPTH
+        self.maximum_allowed_depth = maximum_allowed_depth if maximum_allowed_depth is not None else 1000000
         self.max_recorded_depth = 0
 
     def on_push(self):

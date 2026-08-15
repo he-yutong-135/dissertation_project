@@ -47,7 +47,7 @@ class Token:
         repr = f"{self.type.name}: ({self.content})"
         if not (self.is_key() or self.is_value()):
             repr =  f"{self.type.name}"
-        return '{' + repr + f' [line: {self.line}]' + '}'
+        return '{' + repr + '}'
 
 class Char:
     def __init__(self, v, l):

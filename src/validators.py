@@ -1,7 +1,7 @@
-from constants import Cursor, needs_log, ValidationState
-from error_log import ErrorType, ValidationError, ValidationResult, ValidationResNoLog
-from schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef
-from validator_pool import keyword_types, is_type, composition_validators, composition_keywords, child_schema_keywords, keyword_groups, composition_keywords_lst
+from .constants import Cursor, needs_log, ValidationState
+from .error_log import ErrorType, ValidationError, ValidationResult, ValidationResNoLog
+from .schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef
+from .validator_pool import keyword_types, is_type, composition_validators, composition_keywords, child_schema_keywords, keyword_groups, composition_keywords_lst
 
 import regex as re
 from urllib.parse import urljoin
@@ -97,6 +97,7 @@ class ValidationEngine():
             schema_ref = child
         return schema_ref
 
+    # the function that actually does the validation, it returns the validation results of the node against the schema of 'schema_id'
     def validate_schema(self, schema_id, value, children_state=None, my_type=None,  idx=None):
         # initiate index
         if idx is None:
@@ -120,6 +121,7 @@ class ValidationEngine():
             "idx": idx
         }
 
+        # iterate through the current schema
         for key, param in current_schema.schemas.items():
             all_data["key"] = key
             all_data["param"] = param
@@ -184,7 +186,9 @@ class ValidationEngine():
 
         error = self.compress_errors(errors, schema_id)
         return error
-    
+
+    # some keywords cannot be validated in a streaming manner, the validation results of other keywords are needed
+    # thus they are temporarily stored in a structure the resembles the schema itself. 
     def compress_errors(self, errors, schema_id):
         if isinstance(errors, NodeValidationRes) or isinstance(errors, bool): 
             return errors

@@ -1,5 +1,5 @@
 from enum import StrEnum
-from constants import dent
+from .constants import dent
 
 class ErrorType(StrEnum):
     UNEXPECTED = "<UNEXPECTED>"
@@ -195,26 +195,9 @@ class ValidationResult():
     def state(self):
         if self.has_error(): return 'invalid'
         else: return 'valid'
-    
-def assert_single_log(validationResult, path, errors):
-    errors = errors if isinstance(errors, list) else [errors]
-    assert validationResult.path == path, f'path mismatch: want: {path}, get: {validationResult.path}'
-    assert len(validationResult.errors) == len(errors), f'not enough errors: want {len(errors)} errors, get {len(validationResult.errors)} errors'
-    for i in range(len(errors)):
-        assert validationResult.errors[i] == errors[i], f'error mismatch, want: {repr(errors[i])}, get: {repr(validationResult.errors[i])}'
-
-
-def assert_all_logs(logs, error_dict: dict):
-    assert len(logs) == len(error_dict)
-    for log in logs:
-        path = log.path
-
-        target_errors = error_dict.get(path, None)
-        assert target_errors is not None, f'extra errors added: {log.path}({log.errors})'
-        assert_single_log(log, path, target_errors)
 
 def format_node_info(path, info, line):
-    if len(line) == 2:
+    if isinstance(line, tuple):
         if line[0] != line[1]:
             line_str = f'{line[0]} ~ {line[1]}'
         else:

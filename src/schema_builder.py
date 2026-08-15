@@ -1,6 +1,6 @@
 import sys
 from urllib.parse import urljoin
-from token_gen import token_stream, TokenType, Token
+from .token_gen import token_stream, TokenType, Token
 
 schema_storage = []
 anchor_storage = {}

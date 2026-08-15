@@ -1,8 +1,6 @@
 import re
 from decimal import Decimal
-from constants import type_map, ValidationState
-from schema_builder import SchemaRef
-from constants import get_fingerprint_arr, get_fingerprint_obj, calculate_const_value
+from .constants import type_map, ValidationState, calculate_const_value
 
 
 def validate_minimum(value, param):
@@ -22,7 +20,6 @@ def validate_enum(value, param):
         item_val = calculate_const_value(item)
         value_val = calculate_const_value(value)
         if item_val == value_val:
-        # if value == item and type(value) == type(item):
             if is_number(item_val) and is_number(value_val):
                 return True
             if type(item_val) == type(value_val):
@@ -242,8 +239,8 @@ def validate_if_then_else(errors: dict):
     states = {'if': 'valid' if if_value else 'invalid',
                'then': 'valid' if then_value else 'invalid', 
                'else': 'valid' if else_value else 'invalid'}
-    
-    
+
+    states = ', '.join([f'{k}={v}' for k, v in states.items()])    
     if if_value is None:
         return True, states
     else:
@@ -321,6 +318,13 @@ def validate_property_group(errors):
 
         states[f'child({i})']['additionalProperties'] = additional_info
 
+    state_print = []
+    for child, state in states.items():
+        state = ', '.join([f'{k}={v}' for k, v in state.items()])
+        state_print.append(f'{child}: [{state}]')
+
+    states = ', '.join(state_print)
+
     return result, states
 
 def validate_items_group(errors):
@@ -377,18 +381,31 @@ def validate_items_group(errors):
         if items is not None:
             states[f'child({i})']['items'] = items_info
 
+    state_print = []
+    for child, state in states.items():
+        state = ', '.join([f'{k}={v}' for k, v in state.items()])
+        state_print.append(f'{child}: [{state}]')
+
+    states = ', '.join(state_print)
+
     return result, states
 
-def evaluate_unevaluated_items(value, param, children_state):
+def evaluate_unevaluated_items(value, children_state):
     if len(value) == 0: return True
-    print(children_state)
 
     return True
 
-def evaluate_unevaluated_properties(value, param, children_state):
+def evaluate_unevaluated_properties(value, children_state):
     if len(value) == 0: return True
-    print(children_state)
     return True
+
+def validate_maxProperties(value, param):
+    if isinstance(param, bool): return param
+    return len(value) <= param
+
+def validate_minProperties(value, param):
+    if isinstance(param, bool): return param
+    return len(value) >= param
 
 # key -> (type requirements, validation strategy)
 keyword_types = {
@@ -437,6 +454,8 @@ keyword_types = {
     "additionalProperties": ("object", None),
     "required": ("object", validate_required),
     "dependentRequired": ("object", validate_dependent_required),
+    "maxProperties": ("object", validate_maxProperties),
+    "minProperties": ("object", validate_minProperties),
 
     # Composition
     "allOf": (None, validate_allOf),
