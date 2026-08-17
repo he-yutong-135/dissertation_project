@@ -40,4 +40,5 @@ if __name__ == '__main__':
         max_depth=args.max_depth
     )
 
-    engine.run()
+    result, _ = engine.run()
+    print(f"Validation result: {'valid' if result else 'invalid'}")
