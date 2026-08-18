@@ -220,9 +220,9 @@ composition_keywords_lst = ["anyOf", "allOf", "oneOf"]
 
 array_keywords = [ "contains", "prefixItems", "items"]
 object_keywords = ["properties", "patternProperties", "additionalProperties", 'propertyNames']
-child_schema_keywords = array_keywords + object_keywords
+child_schema_keywords = array_keywords + object_keywords + ["dependentSchemas"]
 
-keyword_groups = ['if_then_else', 'property_group', 'item_group']
+keyword_groups = ['if_then_else', 'property_group', 'item_group', 'contain_group']
 
 
 # keyword_groups
@@ -390,6 +390,52 @@ def validate_items_group(errors):
 
     return result, states
 
+def validate_contain_groups(errors):
+    
+    contains = errors.pop('contains', None) # a list of child states
+    minContains = errors.pop('minContains', None) # a number or not set
+    maxContains = errors.pop('maxContains', None) # a number or not set
+
+    cnt = 0
+
+    # if no corresponding keywords
+    if contains is None:
+        return True, {}
+
+    result = True
+    states = {}
+
+    print(f'validate_contain_groups, contains: {contains}, minContains: {minContains}, maxContains: {maxContains}')
+    if contains is not None:
+        res_lst = contains if isinstance(contains, list) else [contains]
+        for res in res_lst:
+            print(f'current res: {res}')
+            if bool(res) or res is None: # if one branch is valid
+                cnt += 1
+
+        states['contains'] = cnt
+
+    if minContains is None:
+        minContains = 1
+
+    if minContains is not None:
+        if cnt >= minContains:
+            states['minContains'] = 'valid'
+        else:
+            states['minContains'] = 'invalid'
+            result = False
+
+    if maxContains is not None:
+        if cnt <= maxContains:
+            states['maxContains'] = 'valid'
+        else:
+            states['maxContains'] = 'invalid'
+            result = False
+
+    print(f'validate_contain_groups, result: {result}, states: {states}, cnt: {cnt}, maxContains: {maxContains}')
+
+    return result, states
+
 def evaluate_unevaluated_items(value, children_state):
     if len(value) == 0: return True
 
@@ -406,6 +452,8 @@ def validate_maxProperties(value, param):
 def validate_minProperties(value, param):
     if isinstance(param, bool): return param
     return len(value) >= param
+
+delayed_keyword_use_param = ["maxContains", "minContains"]
 
 # key -> (type requirements, validation strategy)
 keyword_types = {
@@ -440,9 +488,11 @@ keyword_types = {
 
     # Array
     "item_group": ("array", validate_items_group), # added
+    "contain_group": ("array", validate_contain_groups), # added
     "items": ("array", None), # validate_items),
     "prefixItems": ("array", None),
-    "contains": ("array", validate_contains),
+    # "contains": ("array", validate_contains),
+    "contains": ("array", None),
     "minItems": ("array", validate_minItems),
     "maxItems": ("array", validate_maxItems),
     "uniqueItems": ("array", validate_unique_items),

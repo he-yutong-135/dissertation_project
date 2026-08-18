@@ -1,7 +1,9 @@
 from .constants import Cursor, needs_log, ValidationState
 from .error_log import ErrorType, ValidationError, ValidationResult, ValidationResNoLog
 from .schema_builder import ACCEPT_NODE, REJECT_NODE, SchemaRef
-from .validator_pool import keyword_types, is_type, composition_validators, composition_keywords, child_schema_keywords, keyword_groups, composition_keywords_lst
+from .validator_pool import keyword_types, is_type, composition_validators, composition_keywords, \
+                    child_schema_keywords, keyword_groups, composition_keywords_lst, delayed_keyword_use_param, \
+                    delayed_keyword_use_param 
 
 import regex as re
 from urllib.parse import urljoin
@@ -175,6 +177,8 @@ class ValidationEngine():
                         next_schema_id = ref.value() 
                     errors[key].append(self.validate_schema(next_schema_id, value, children_state,idx=idx, my_type=my_type))
             elif isinstance(param, bool) and key in composition_keywords:
+                errors[key] = param
+            elif key in delayed_keyword_use_param:
                 errors[key] = param
             else:
                 if not func:

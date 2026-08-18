@@ -1,4 +1,8 @@
 --- Validation Error Log ---
 
-(maximum stack depth: 4)
+invalid json item! line: 1, path: array, value: array[1, 1]
+  schema id: 0
+    <COMPOSITION ERROR>: violates composite schema[contain_group], branch states: [{'contains': 2, 'minContains': 'valid', 'maxContains': 'invalid'}]
+
+(maximum stack depth: 2)
 --- validation done ---
