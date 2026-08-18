@@ -89,7 +89,6 @@ class Node:
         self.children[node.key] = node.value
 
     def register_state(self, node):
-
         if node.key not in self.children.keys():
             raise ValueError('wrong register: not a child of its parent')
         assert len(node.my_states) == len(self.child_states)

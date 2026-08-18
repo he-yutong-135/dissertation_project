@@ -215,12 +215,12 @@ composition_validators = {
     "$ref": validate_ref,
     # "if_then_else": validate_if_then_else
 }
-composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref", "unevaluatedItems", "unevaluatedProperties"]
+composition_keywords = ["anyOf", "allOf", "oneOf", "not", "if", "then", "else", "$ref"] #, "unevaluatedItems", "unevaluatedProperties"]
 composition_keywords_lst = ["anyOf", "allOf", "oneOf"]
 
 array_keywords = [ "contains", "prefixItems", "items"]
 object_keywords = ["properties", "patternProperties", "additionalProperties", 'propertyNames']
-child_schema_keywords = array_keywords + object_keywords + ["dependentSchemas"]
+child_schema_keywords = array_keywords + object_keywords # + ["dependentSchemas"]
 
 keyword_groups = ['if_then_else', 'property_group', 'item_group', 'contain_group']
 
@@ -436,13 +436,41 @@ def validate_contain_groups(errors):
 
     return result, states
 
-def evaluate_unevaluated_items(value, children_state):
-    if len(value) == 0: return True
+def evaluate_unevaluated_items(value, children_state, param):
+    if not isinstance(value, list):
+        return True
+    states = [False for _ in value] # True means evaluated, False means unevaluated
+    
+
+    for child_state in children_state:
+        for i, s in enumerate(child_state):
+            if s is not ValidationState.NoMatch:
+                states[i] = True # evaluated
+
+    print(f'evaluate_unevaluated_items, value: {value}, children_state: {children_state}, states: {states}')
+    if param is False:
+        for s in states:
+            if not s:
+                return False
 
     return True
 
-def evaluate_unevaluated_properties(value, children_state):
-    if len(value) == 0: return True
+def evaluate_unevaluated_properties(value, children_state, param):
+    if not isinstance(value, dict):
+        return True
+    states = [False for _ in value.keys()] # True means evaluated, False means unevaluated
+
+    for child_state in children_state:
+        for i, s in enumerate(child_state):
+            if s is not ValidationState.NoMatch:
+                states[i] = True # evaluated
+
+    print(f'evaluate_unevaluated_properties, value: {value}, children_state: {children_state}, states: {states}')
+    if param is False:
+        for s in states:
+            if not s:
+                return False
+
     return True
 
 def validate_maxProperties(value, param):
@@ -491,11 +519,13 @@ keyword_types = {
     "contain_group": ("array", validate_contain_groups), # added
     "items": ("array", None), # validate_items),
     "prefixItems": ("array", None),
-    # "contains": ("array", validate_contains),
     "contains": ("array", None),
+    "maxContains": (None, None),
+    "minContains": (None, None),
     "minItems": ("array", validate_minItems),
     "maxItems": ("array", validate_maxItems),
     "uniqueItems": ("array", validate_unique_items),
+    "unevaluatedItems": ("array", evaluate_unevaluated_items),
 
     # Object
     "property_group": ("object", validate_property_group), # added
@@ -506,6 +536,7 @@ keyword_types = {
     "dependentRequired": ("object", validate_dependent_required),
     "maxProperties": ("object", validate_maxProperties),
     "minProperties": ("object", validate_minProperties),
+    "unevaluatedProperties": ("object", evaluate_unevaluated_properties),
 
     # Composition
     "allOf": (None, validate_allOf),
@@ -518,11 +549,7 @@ keyword_types = {
     "else": (None, None),
 
     # Not implemented
-    "unevaluatedProperties": (None, evaluate_unevaluated_properties),
-    "unevaluatedItems": (None, evaluate_unevaluated_items),
     "dynamicRef": (None, accept),
-    "maxContains": (None, accept),
-    "minContains": (None, accept),
     "dependentSchemas": (None, accept),
     "refRemote": (None, accept),
     "format": ("string", accept),

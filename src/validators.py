@@ -139,6 +139,22 @@ class ValidationEngine():
             
             # schema that requires the validation results from its child nodes
             if key in child_schema_keywords: 
+                # if key == "dependentSchemas":
+                #     errors[key] = {}
+                #     schema_dict = param.follow().content() if isinstance(param, SchemaRef) else param # param could be a boolean
+                #     print(f"dependentSchemas validation: {schema_dict}")
+                #     for k, v in schema_dict.items():
+                #         if isinstance(v, bool):
+                #             errors[key][k] = v
+                #         else:
+                #             errors[key][k] = self.validate_schema(v.value(), value, children_state, idx=idx, my_type=my_type)
+                #     all_data["schema_dict"] = errors[key]
+                #     filtered_kwargs = {k: v for k, v in all_data.items() if k in sig.parameters}
+                #     if not func(**filtered_kwargs): # # validation fails
+                #         res_states = [res.state() for res in errors[key].values()]
+                #         errors[key] = ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": key, "states": ', '.join(res_states)})
+                #     print(f"dependentSchemas validation result: {errors[key]}")
+
                 if isinstance(param, bool):
                     if key == "contains" and len(value) == 0:
                         errors[key] = ValidationError(ErrorType.COMPOSITION_ERROR, {"rule": key, "states": 'empty array'})
@@ -185,6 +201,7 @@ class ValidationEngine():
                     errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param})'})
                 else:
                     filtered_kwargs = {k: v for k, v in all_data.items() if k in sig.parameters}
+                    print(filtered_kwargs)
                     if not func(**filtered_kwargs): # validation fails: not True
                         errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
 
@@ -244,7 +261,6 @@ class ValidationEngine():
                 continue
 
             schema = self.get_schema(schema_id)
-
             for k, v in schema.content().items():
                 type_requirements, _ = keyword_types.get(k)
 
@@ -280,6 +296,7 @@ class ValidationEngine():
         for schema_tuple in schema_lst:
             key, schema = schema_tuple
             schema_ref = None
+            
             if isinstance(schema, SchemaRef): 
                 self.update_schema(schema)
                 schema_ids.append(schema)
