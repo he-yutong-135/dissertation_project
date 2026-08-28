@@ -201,7 +201,6 @@ class ValidationEngine():
                     errors[key] = ValidationError(ErrorType.SCHEMA_ERROR, {'rule': f'{key}({param})'})
                 else:
                     filtered_kwargs = {k: v for k, v in all_data.items() if k in sig.parameters}
-                    print(filtered_kwargs)
                     if not func(**filtered_kwargs): # validation fails: not True
                         errors[key] = ValidationError(ErrorType.BAD_VALUE, {'value': value, 'rule': f'{key}({param})'})
 
@@ -262,6 +261,7 @@ class ValidationEngine():
 
             schema = self.get_schema(schema_id)
             for k, v in schema.content().items():
+                print("DEBUG k =", repr(k))
                 type_requirements, _ = keyword_types.get(k)
 
                 # only record the schema that can be applied on this node

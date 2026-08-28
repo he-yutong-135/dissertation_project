@@ -62,6 +62,10 @@ The keyword-level performance evaluation code and results are provided in `evalu
 - `demonstration.ipynb` — representative usage examples
 - `main.py` — command-line entry point
 
-## Limitations
+## Draft 2020-12 pass rate
 
-The current prototype does not support all JSON Schema Draft 2020-12 keywords. See evaluation directory for more information
+- Fully supported: 33 keywords
+- Partially supported: 4
+- Not implemented: 9
+
+Official test suite pass rate: 85.5%

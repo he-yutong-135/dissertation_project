@@ -1,8 +1,8 @@
 --- Validation Error Log ---
 
-invalid json item! line: 1, path: array, value: array[6663858587008732609, bar]
+invalid json item! line: 1, path: array, value: array[4107460679442354525, bar]
   schema id: 0
-    <BAD VALUE>: value([6663858587008732609, 'bar']) violates schema[unevaluatedItems(False)]
+    <BAD VALUE>: value([4107460679442354525, 'bar']) violates schema[unevaluatedItems(False)]
 
 (maximum stack depth: 3)
 --- validation done ---

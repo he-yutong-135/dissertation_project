@@ -279,7 +279,7 @@ def token_stream(source):
 
     # for reading test data
     else:
-        print(json.dumps(source))
+        # print(json.dumps(source))
         yield from token_stream_from_stream(
             StringIO(json.dumps(source))
         )

@@ -4,6 +4,7 @@ from .error_log import ValidationResult, ValidationError, ErrorType, ValidationL
 from .validators import ValidationEngine
 from .constants import NodeType, get_fingerprint_obj, get_fingerprint_arr, needs_log
 from .circuit_breaker import CircuitBreaker, CircuitBreakerException
+import traceback
 
 NodeValidationRes = ValidationResult if needs_log else ValidationResNoLog
 
@@ -283,6 +284,7 @@ class Engine():
             self.stack[0].child_states[0].append(depth_error)
             
         except Exception as e:
+            traceback.print_exc()
             error = NodeValidationRes(ValidationError(ErrorType.UNEXPECTED, {'value': f'runtime error: \n{e}'}))
             self.logs.add_log(error, self.current_node.get_path(), str(self.current_node), line=self.current_node.line)
             self.stack[0].child_states[0].append(error)
